@@ -18,10 +18,6 @@
 # $3 - the tunnel's public IP
 #
 
-# uncomment the below to enable "debug" mode. when enabled you can run
-# the script and it will only start/stop your services
-#DEBUG="YES"
-
 # service name map (comma delimited)
 vpn_1="transmission"
 #vpn_2="example1,example2"
@@ -35,12 +31,14 @@ transmission_start()
     download_dir=/tank/torrents
     incomplete_dir=/tank/torrents/active
     bind_ip=${2:-"127.0.0.1"}
+    bind_ip6="::1"
 
     log "starting transmission"
     /usr/sbin/setfib $1 /usr/local/bin/transmission-daemon \
         -x $pidfile \
         -g $conf_dir \
         -i $bind_ip \
+        -I $bind_ip6 \
         -c $watch_dir \
         --download-dir $download_dir \
         --incomplete-dir $incomplete_dir
@@ -80,37 +78,35 @@ usage ()
 onup()
 {
     vpn=$1
-    log "vpn $vpn is coming up"
 
-    if [ -z "$DEBUG" ]
+    if [ -z "$vpn" ]
     then
-        if [ -z "$vpn" ] ||
-            [ -z "$ifconfig_local" ] ||
-            [ -z "$ifconfig_remote" ] ||
-            [ -z "$trusted_ip" ] ||
-            [ -z "$route_net_gateway" ]
-        then
-            log "missing VPN parameters, exiting"
-            return
-        fi
+        log "missing VPN id, exiting"
+        return
+    fi
+
+    #
+    # $ifconfig_local is the client's side of the tunnel
+    # $ifconfig_remote is the server's side of the tunnel
+    # $trusted_ip is the public ip of the server
+    # $route_net_gateway is the original gateway of the network
+    #
     
-        #
-        # $ifconfig_local is the client's side of the tunnel
-        # $ifconfig_remote is the server's side of the tunnel
-        # $trusted_ip is the public ip of the server
-        # $route_net_gateway is the original gateway of the network
-        #
-        
-        log "  local endpoint: $ifconfig_local"
-        log "  remote endpoint: $ifconfig_remote"
-        log "  server ip: $trusted_ip"
-        log "  original gateway: $route_net_gateway"
-    
+    log "vpn $vpn is coming up"
+    log "  local endpoint: $ifconfig_local"
+    log "  remote endpoint: $ifconfig_remote"
+    log "  server ip: $trusted_ip"
+    log "  original gateway: $route_net_gateway"
+
+    if [ ! -z "$ifconfig_remote" ] &&
+        [ ! -z "$trusted_ip" ] &&
+        [ ! -z "$route_net_gateway" ]
+    then
         # set up the routes
         /usr/sbin/setfib $vpn /sbin/route add -net default $ifconfig_remote
         /usr/sbin/setfib $vpn /sbin/route add -net $trusted_ip $route_net_gateway
     fi
-    
+
     # start the vpn specific services
     services="$(eval echo \${vpn_${vpn}})"
     for service in `echo $services | tr "," "\n"`
@@ -124,25 +120,18 @@ onup()
 ondown()
 {
     vpn=$1
-    log "vpn $vpn is going down"
 
-    if [ -z "$DEBUG" ]
+    if [ -z "$vpn" ]
     then
-        if [ -z "$vpn" ] ||
-            [ -z "$ifconfig_local" ] ||
-            [ -z "$ifconfig_remote" ] ||
-            [ -z "$trusted_ip" ] ||
-            [ -z "$route_net_gateway" ]
-        then
-            log "missing VPN parameters, exiting"
-            return
-        fi
-    
-        log "  local endpoint: $ifconfig_local"
-        log "  remote endpoint: $ifconfig_remote"
-        log "  server ip: $trusted_ip"
-        log "  original gateway: $route_net_gateway"
+        log "missing VPN id, exiting"
+        return
     fi
+
+    log "vpn $vpn is going down"
+    log "  local endpoint: $ifconfig_local"
+    log "  remote endpoint: $ifconfig_remote"
+    log "  server ip: $trusted_ip"
+    log "  original gateway: $route_net_gateway"
 
     # stop the services
     services="$(eval echo \${vpn_${vpn}})"
@@ -151,9 +140,10 @@ ondown()
         eval "${service}_stop"
     done
 
-    if [ -z "$DEBUG" ]
+    if [ ! -z "$trusted_ip" ] && [ ! -z "route_net_gateway" ]
     then
         # delete the route (note that the default route is deleted automatically)
+        log "deleting VPN route"
         /usr/sbin/setfib $vpn /sbin/route delete -net $trusted_ip $route_net_gateway
     fi
 }

@@ -2,6 +2,7 @@
 
 import curses
 import json
+import os
 import subprocess
 import time
 
@@ -43,7 +44,8 @@ def get_host_info(fib):
     city = None
 
     try:
-        data = json.loads(subprocess.check_output(["setfib", "%s" % fib, "curl", "-s", "http://api.hostip.info/get_json.php"]))
+        with open(os.devnull, 'w') as dev_null:
+            data = json.loads(subprocess.check_output(["setfib", "%s" % fib, "curl", "-s", "http://api.hostip.info/get_json.php"], stderr=dev_null))
 
         ip = data['ip']
         country = data['country_code']

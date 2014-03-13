@@ -32,6 +32,10 @@ class Mapper:
         "                     | |                                 '-'  `-'   \.",
         "                     |/                                        \"    / ",
         "                     \.                                            '  ",
+        "                                                                      ",
+        "                      ,/           ______._.--._ _..---.---------._   ",
+        "     ,-----\"-..?----_/ )      _,-'\"             \"                  (   ",
+        " .._(                  `-----'                                      `- ",
         ]
 
     def __init__(self):
@@ -51,11 +55,12 @@ class Mapper:
             x, y = self.lat_long_to_x_y(target[0], target[1])
             map_pad.addch(y, x, 'x', curses.color_pair(3))
 
-    def draw_map_border(self, all_pad):
+    def draw_map_border(self, stdscr):
         long_markers = [-180, -150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150, 180]
-        lat_markers = [90, 60, 30, 0, -30, -60]
-        # draw the top row of longitude markers
-        longitude_border = "+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+"
+        lat_markers = [90, 60, 30, 0, -30, -60, -90]
+        height, width = stdscr.getmaxyx()
+        right_edge = min(Mapper.map_width + 5, width - 2)
+        bottom_edge = min(Mapper.map_height + 2, height - 1)
 
         for marker in long_markers:
             x,y = self.lat_long_to_x_y(0, marker)
@@ -74,13 +79,20 @@ class Mapper:
             elif (marker == 0):
                 label = "000"
 
-            all_pad.addstr(0, x + 4 - int(round((len(label) / 2), 0)), label, curses.color_pair(4))
+            label_x = x + 5 - int(round((len(label) / 2), 0))
 
-        all_pad.addstr(1, 3, longitude_border, curses.color_pair(4))
+            if (label_x + len(label) > width - 1):
+                break
 
-        for y in range(2,21):
-            all_pad.addstr(y, 3, "|", curses.color_pair(4))
-            all_pad.addstr(y, 75, "|", curses.color_pair(4))
+            stdscr.addstr(0, label_x, label, curses.color_pair(4))
+
+        for x in range(4, right_edge + 1):
+            ch = "-" if (x - 4) % 6 else "+"
+            stdscr.addch(1, x, ch, curses.color_pair(4))
+
+        for y in range(2, bottom_edge):
+            stdscr.addstr(y, 4, "|", curses.color_pair(4))
+            stdscr.addstr(y, right_edge, "|", curses.color_pair(4))
 
         for marker in lat_markers:
             x,y = self.lat_long_to_x_y(marker, 0)
@@ -93,9 +105,14 @@ class Mapper:
             else:
                 label = "000"
 
-            all_pad.addstr(y + 2, 0, label + "+", curses.color_pair(4))
+            if (y + 2 > height - 1):
+                break
 
-        all_pad.addstr(21, 3, longitude_border, curses.color_pair(4))
+            stdscr.addstr(y + 2, 1, label + "+", curses.color_pair(4))
+
+        for x in range(4, right_edge + 1):
+            ch = "-" if (x - 4) % 6 else "+"
+            stdscr.addch(bottom_edge, x, ch, curses.color_pair(4))
 
     def lat_long_to_x_y(self, lat, long):
         # map is 71x23
@@ -121,27 +138,26 @@ class Mapper:
         # getch should be none blocking
         stdscr.nodelay(1)
 
-        all_pad = curses.newpad(22, 76 + 1)
         map_pad = curses.newpad(Mapper.map_height, Mapper.map_width + 1)
-
-        # refresh the screen once so getch doesn't do it
-        stdscr.refresh()
 
         update = True
         last_updated = None
 
         while not self.quit:
+            height, width = stdscr.getmaxyx()
+
             if (update or time.time() - last_updated > 300):
-                height, width = stdscr.getmaxyx()
-                self.draw_map_border(all_pad)
-                all_pad.refresh(0,0, 0,1, height-1,width-1)
+                stdscr.clear()
+                map_pad.clear()
+                self.draw_map_border(stdscr)
                 self.draw(map_pad)
-                map_pad.refresh(0,0, 2,5, min(height-1, 20),min(width-1, 74))
 
                 update = False
                 last_updated = time.time()
 
             ch = stdscr.getch()
+            stdscr.refresh()
+            map_pad.refresh(0,0, 2,5, min(height - 2, Mapper.map_height + 1),min(width - 3, Mapper.map_width + 3))
 
             if (ch != -1):
                 self.process_input(ch)

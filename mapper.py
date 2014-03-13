@@ -200,7 +200,7 @@ class Mapper:
             map_pad.refresh(0,0, 2,5, min(height - 2, Mapper.map_height + 1),min(width - 3, Mapper.map_width + 3))
 
             if (height > Mapper.map_height + 3):
-                cpl_pad.refresh(0,0, Mapper.map_height + 3,5, height,width - 3)
+                cpl_pad.refresh(0,0, Mapper.map_height + 3,5, height - 1,width - 3)
 
             if (ch != -1):
                 self.process_input(ch)

@@ -11,6 +11,12 @@ import time
 class Mapper:
     fibs = [0,1,2,3]
 
+    offset_left = 1
+    offset_top = 0
+
+    compass_top_height = 2
+    compass_left_width = 4
+
     map_width = 71
     map_height = 23
 
@@ -73,15 +79,15 @@ class Mapper:
         long_markers = [-180, -150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150, 180]
         lat_markers = [90, 60, 30, 0, -30, -60, -90]
         height, width = stdscr.getmaxyx()
-        right_edge = min(Mapper.map_width + 5, width - 2)
-        bottom_edge = min(Mapper.map_height + 2, height - 1)
+        right_edge = min(Mapper.offset_left + Mapper.compass_left_width + Mapper.map_width, width - 1)
+        bottom_edge = min(Mapper.offset_top + Mapper.compass_top_height + Mapper.map_height, height - 1)
 
-        for x in range(4 + 1, right_edge + 0):
-            stdscr.addch(1, x, '-', curses.color_pair(4))
+        for x in range(Mapper.offset_left + Mapper.compass_left_width, right_edge):
+            stdscr.addch(Mapper.offset_top + Mapper.compass_top_height - 1, x, '-', curses.color_pair(4))
             stdscr.addch(bottom_edge, x, '-', curses.color_pair(4))
 
-        for y in range(2, bottom_edge):
-            stdscr.addstr(y, 4, "|", curses.color_pair(4))
+        for y in range(Mapper.offset_top + Mapper.compass_top_height, bottom_edge):
+            stdscr.addstr(y, Mapper.offset_left + Mapper.compass_left_width - 1, "|", curses.color_pair(4))
             stdscr.addstr(y, right_edge, "|", curses.color_pair(4))
 
         for marker in long_markers:
@@ -101,14 +107,18 @@ class Mapper:
             elif (marker == 0):
                 label = "000"
 
-            label_x = x + 5 - int(round((len(label) / 2), 0))
+            x += Mapper.offset_left + Mapper.compass_left_width
 
-            if (label_x + len(label) > width - 1):
+            label_x = x - int(round((len(label) / 2), 0))
+
+            if (x > right_edge):
                 break
 
-            stdscr.addstr(0, label_x, label, curses.color_pair(4))
-            stdscr.addch(1, x + 5, '+', curses.color_pair(4))
-            stdscr.addch(bottom_edge, x + 5, '+', curses.color_pair(4))
+            stdscr.addch(Mapper.offset_top + 1, x, '+', curses.color_pair(4))
+            stdscr.addch(bottom_edge, x, '+', curses.color_pair(4))
+
+            if (label_x + len(label) <= right_edge + 2):
+                stdscr.addstr(Mapper.offset_top, label_x, label, curses.color_pair(4))
 
         for marker in lat_markers:
             x,y = self.lat_long_to_x_y(marker, 0)
@@ -121,11 +131,13 @@ class Mapper:
             else:
                 label = "000"
 
-            if (y + 2 > height - 1):
+            y += Mapper.offset_top + Mapper.compass_top_height
+
+            if (y > bottom_edge):
                 break
 
-            stdscr.addstr(y + 2, 1, label + "+", curses.color_pair(4))
-            stdscr.addstr(y + 2, right_edge, "+", curses.color_pair(4))
+            stdscr.addstr(y, Mapper.offset_left, label + "+", curses.color_pair(4))
+            stdscr.addstr(y, right_edge, "+", curses.color_pair(4))
 
     def draw_cpl(self, cpl_pad):
         y = 0
@@ -184,6 +196,10 @@ class Mapper:
     def process_input(self, value):
         if (value == ord("q")):
             self.quit = True
+        elif (value == ord("a")):
+            Mapper.offset_top += 1
+        elif (value == ord("b")):
+            Mapper.offset_left += 1
 
     def run(self, stdscr):
         curses.curs_set(0)
@@ -220,7 +236,11 @@ class Mapper:
 
             ch = stdscr.getch()
             stdscr.refresh()
-            map_pad.refresh(0,0, 2,5, min(height - 2, Mapper.map_height + 1),min(width - 3, Mapper.map_width + 4))
+            map_pad_y = Mapper.offset_top + Mapper.compass_top_height
+            map_pad_x = Mapper.offset_left + Mapper.compass_left_width
+            map_pad_h = min(map_pad_y + Mapper.map_height - 1, height - 1)
+            map_pad_w = min(map_pad_x + Mapper.map_width - 1, width - 1)
+            map_pad.refresh(0,0, map_pad_y,map_pad_x, map_pad_h,map_pad_w)
 
             if (height > Mapper.map_height + 3):
                 cpl_pad.refresh(0,0, Mapper.map_height + 3,5, height - 1,width - 3)

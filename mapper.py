@@ -4,6 +4,7 @@ import curses
 import json
 import math
 import os
+import signal
 import subprocess
 import time
 
@@ -145,9 +146,14 @@ class Mapper:
             else:
                 time.sleep(0.250)
 
+def sigwinch(signum, frame):
+    curses.endwin()
+    curses.initscr()
+
 def main(stdscr):
     mapper = Mapper()
     mapper.run(stdscr)
 
 if __name__ =='__main__':
+    signal.signal(signal.SIGWINCH, sigwinch)
     curses.wrapper(main)

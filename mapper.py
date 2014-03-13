@@ -117,8 +117,6 @@ def main(stdscr):
     # getch should be none blocking
     stdscr.nodelay(1)
 
-    height, width = stdscr.getmaxyx()
-
     all_pad = curses.newpad(22, 76 + 1)
     map_pad = curses.newpad(19, 71 + 1)
 
@@ -130,10 +128,11 @@ def main(stdscr):
 
     while not quit:
         if (update or time.time() - last_updated > 300):
+            height, width = stdscr.getmaxyx()
             draw_map_border(all_pad)
             all_pad.refresh(0,0, 0,1, height-1,width-1)
             draw(map_pad)
-            map_pad.refresh(0,0, 2,5, 20,74)
+            map_pad.refresh(0,0, 2,5, min(height-1, 20),min(width-1, 74))
 
             update = False
             last_updated = time.time()

@@ -9,6 +9,9 @@ import subprocess
 import time
 
 class Mapper:
+    map_width = 71
+    map_height = 23
+
     map_lines = [
         "           . _..::__:  ,-\"-\"._       |7       ,     _,.__             ",
         "   _.___ _ _<_>`!(._`.`-.    /        _._     `_ ,_/  '  '-._.---.-.__",
@@ -99,8 +102,8 @@ class Mapper:
         # lat goes from -90 to +90
         # long goes from -180 to +180
         # 35,11 is 0N,0W
-        x = int(round(35 + ((71 / 360.0) * long), 0))
-        y = int(round(11 - ((23 / 180.0) * lat), 0))
+        x = int(round(math.floor(Mapper.map_width / 2) + ((Mapper.map_width / 360.0) * long), 0))
+        y = int(round(math.floor(Mapper.map_height / 2) - ((Mapper.map_height / 180.0) * lat), 0))
 
         return x, y
 
@@ -119,7 +122,7 @@ class Mapper:
         stdscr.nodelay(1)
 
         all_pad = curses.newpad(22, 76 + 1)
-        map_pad = curses.newpad(19, 71 + 1)
+        map_pad = curses.newpad(Mapper.map_height, Mapper.map_width + 1)
 
         # refresh the screen once so getch doesn't do it
         stdscr.refresh()

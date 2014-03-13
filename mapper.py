@@ -42,10 +42,18 @@ class Mapper:
 
     def __init__(self):
         self.quit = False
+        self.inbound_coords = []
+        self.my_coords = []
+        self.routes = []
 
-    def calc_targets(self):
-        targets = [[47, -122]]
-        return targets
+    def update_data(self):
+        self.my_coords = [[47, -122]]
+        self.inbound_coords = [[41.48222, -81.6697]]
+
+        for fib in Mapper.fibs:
+            ip, country, city = self.get_host_info(fib)
+
+            self.routes.append([fib, ip, country, city])
 
     def draw_map(self, map_pad):
         y = 0
@@ -53,8 +61,12 @@ class Mapper:
             map_pad.addstr(y, 0, line, curses.color_pair(1))
             y += 1
 
-        for target in self.calc_targets():
-            x, y = self.lat_long_to_x_y(target[0], target[1])
+        for coord in self.my_coords:
+            x, y = self.lat_long_to_x_y(coord[0], coord[1])
+            map_pad.addch(y, x, 'x', curses.color_pair(2))
+
+        for coord in self.inbound_coords:
+            x, y = self.lat_long_to_x_y(coord[0], coord[1])
             map_pad.addch(y, x, 'x', curses.color_pair(3))
 
     def draw_map_border(self, stdscr):
@@ -118,17 +130,15 @@ class Mapper:
 
     def draw_cpl(self, cpl_pad):
         y = 0
-        for fib in self.fibs:
-            ip, country, city = self.get_host_info(fib)
+        for route in self.routes:
+            if (route[1]):
+                locale = "%s, %s" % (route[3], route[2])
 
-            if (ip):
-                locale = "%s, %s" % (city, country)
-
-                cpl_pad.addstr(y, 0, "%s" % fib, curses.color_pair(4))
-                cpl_pad.addstr(y, 3, ip, curses.color_pair(1))
+                cpl_pad.addstr(y, 0, "%s" % route[0], curses.color_pair(4))
+                cpl_pad.addstr(y, 3, route[1], curses.color_pair(1))
                 cpl_pad.addstr(y, Mapper.map_width - len(locale) - 1, locale, curses.color_pair(2))
             else:
-                cpl_pad.addstr(y, 0, "%s" % fib, curses.color_pair(4))
+                cpl_pad.addstr(y, 0, "%s" % route[0], curses.color_pair(4))
                 cpl_pad.addstr(y, 3, "DOWN", curses.color_pair(3))
 
             y += 1
@@ -179,20 +189,24 @@ class Mapper:
         map_pad = curses.newpad(Mapper.map_height, Mapper.map_width + 1)
         cpl_pad = curses.newpad(len(self.fibs), Mapper.map_width + 1)
 
-        update = True
-        last_updated = None
+        refresh = True
+        last_updated = time.time() - 1000
 
         while not self.quit:
             height, width = stdscr.getmaxyx()
 
-            if (update or time.time() - last_updated > 300):
+            if (time.time() - last_updated > 300):
+                self.update_data()
+                refresh = True
+
+            if (refresh):
                 stdscr.clear()
                 map_pad.clear()
                 self.draw_map_border(stdscr)
                 self.draw_map(map_pad)
                 self.draw_cpl(cpl_pad)
 
-                update = False
+                refresh = False
                 last_updated = time.time()
 
             ch = stdscr.getch()
@@ -204,7 +218,7 @@ class Mapper:
 
             if (ch != -1):
                 self.process_input(ch)
-                update = True
+                refresh = True
             else:
                 time.sleep(0.250)
 

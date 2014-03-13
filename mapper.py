@@ -48,7 +48,7 @@ class Mapper:
 
     def update_data(self):
         self.my_coords = [[47, -122]]
-        self.inbound_coords = [[41.48222, -81.6697]]
+        self.inbound_coords = [[41.48222, -81.6697], [-90.1111, -122], [-90, -180]]
 
         for fib in Mapper.fibs:
             ip, country, city = self.get_host_info(fib)
@@ -76,6 +76,14 @@ class Mapper:
         right_edge = min(Mapper.map_width + 5, width - 2)
         bottom_edge = min(Mapper.map_height + 2, height - 1)
 
+        for x in range(4 + 1, right_edge + 0):
+            stdscr.addch(1, x, '-', curses.color_pair(4))
+            stdscr.addch(bottom_edge, x, '-', curses.color_pair(4))
+
+        for y in range(2, bottom_edge):
+            stdscr.addstr(y, 4, "|", curses.color_pair(4))
+            stdscr.addstr(y, right_edge, "|", curses.color_pair(4))
+
         for marker in long_markers:
             x,y = self.lat_long_to_x_y(0, marker)
             label = "{0}".format(int(math.fabs(marker)))
@@ -99,14 +107,8 @@ class Mapper:
                 break
 
             stdscr.addstr(0, label_x, label, curses.color_pair(4))
-
-        for x in range(4, right_edge + 1):
-            ch = "-" if (x - 4) % 6 else "+"
-            stdscr.addch(1, x, ch, curses.color_pair(4))
-
-        for y in range(2, bottom_edge):
-            stdscr.addstr(y, 4, "|", curses.color_pair(4))
-            stdscr.addstr(y, right_edge, "|", curses.color_pair(4))
+            stdscr.addch(1, x + 5, '+', curses.color_pair(4))
+            stdscr.addch(bottom_edge, x + 5, '+', curses.color_pair(4))
 
         for marker in lat_markers:
             x,y = self.lat_long_to_x_y(marker, 0)
@@ -123,10 +125,7 @@ class Mapper:
                 break
 
             stdscr.addstr(y + 2, 1, label + "+", curses.color_pair(4))
-
-        for x in range(4, right_edge + 1):
-            ch = "-" if (x - 4) % 6 else "+"
-            stdscr.addch(bottom_edge, x, ch, curses.color_pair(4))
+            stdscr.addstr(y + 2, right_edge, "+", curses.color_pair(4))
 
     def draw_cpl(self, cpl_pad):
         y = 0
@@ -148,8 +147,18 @@ class Mapper:
         # lat goes from -90 to +90
         # long goes from -180 to +180
         # 35,11 is 0N,0W
-        x = int(round(math.floor(Mapper.map_width / 2) + ((Mapper.map_width / 360.0) * long), 0))
-        y = int(round(math.floor(Mapper.map_height / 2) - ((Mapper.map_height / 180.0) * lat), 0))
+
+        dx = (long + 180)
+        dy = (-1 * lat + 90)
+
+        if (dx > 360):
+            dx = 360
+
+        if (dy > 180):
+            dy = 180
+
+        x = int(round(dx * ((Mapper.map_width - 1) / 360.0), 0))
+        y = int(round(dy * ((Mapper.map_height - 1) / 180.0), 0))
 
         return x, y
 
@@ -186,7 +195,7 @@ class Mapper:
         # getch should be none blocking
         stdscr.nodelay(1)
 
-        map_pad = curses.newpad(Mapper.map_height, Mapper.map_width + 1)
+        map_pad = curses.newpad(Mapper.map_height + 1, Mapper.map_width + 1)
         cpl_pad = curses.newpad(len(self.fibs), Mapper.map_width + 1)
 
         refresh = True
@@ -211,7 +220,7 @@ class Mapper:
 
             ch = stdscr.getch()
             stdscr.refresh()
-            map_pad.refresh(0,0, 2,5, min(height - 2, Mapper.map_height + 1),min(width - 3, Mapper.map_width + 3))
+            map_pad.refresh(0,0, 2,5, min(height - 2, Mapper.map_height + 1),min(width - 3, Mapper.map_width + 4))
 
             if (height > Mapper.map_height + 3):
                 cpl_pad.refresh(0,0, Mapper.map_height + 3,5, height - 1,width - 3)

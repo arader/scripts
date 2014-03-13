@@ -9,6 +9,8 @@ import subprocess
 import time
 
 class Mapper:
+    fibs = [0,1,2,3]
+
     map_width = 71
     map_height = 23
 
@@ -45,7 +47,7 @@ class Mapper:
         targets = [[47, -122]]
         return targets
 
-    def draw(self, map_pad):
+    def draw_map(self, map_pad):
         y = 0
         for line in Mapper.map_lines:
             map_pad.addstr(y, 0, line, curses.color_pair(1))
@@ -114,6 +116,23 @@ class Mapper:
             ch = "-" if (x - 4) % 6 else "+"
             stdscr.addch(bottom_edge, x, ch, curses.color_pair(4))
 
+    def draw_cpl(self, cpl_pad):
+        y = 0
+        for fib in self.fibs:
+            ip, country, city = self.get_host_info(fib)
+
+            if (ip):
+                locale = "%s, %s" % (city, country)
+
+                cpl_pad.addstr(y, 0, "%s" % fib, curses.color_pair(4))
+                cpl_pad.addstr(y, 3, ip, curses.color_pair(1))
+                cpl_pad.addstr(y, Mapper.map_width - len(locale) - 1, locale, curses.color_pair(2))
+            else:
+                cpl_pad.addstr(y, 0, "%s" % fib, curses.color_pair(4))
+                cpl_pad.addstr(y, 3, "DOWN", curses.color_pair(3))
+
+            y += 1
+
     def lat_long_to_x_y(self, lat, long):
         # map is 71x23
         # lat goes from -90 to +90
@@ -123,6 +142,25 @@ class Mapper:
         y = int(round(math.floor(Mapper.map_height / 2) - ((Mapper.map_height / 180.0) * lat), 0))
 
         return x, y
+
+    def get_host_info(self, fib):
+        ip = None
+        country = None
+        city = None
+
+        try:
+            with open(os.devnull, 'w') as dev_null:
+                data = json.loads(subprocess.check_output(["setfib", "%s" % fib, "curl", "-s", "http://api.hostip.info/get_json.php"], stderr=dev_null))
+
+            ip = data['ip']
+            country = data['country_code']
+            city = data['city']
+        except:
+            ip = None
+            country = None
+            city = None
+
+        return ip, country, city
 
     def process_input(self, value):
         if (value == ord("q")):
@@ -139,6 +177,7 @@ class Mapper:
         stdscr.nodelay(1)
 
         map_pad = curses.newpad(Mapper.map_height, Mapper.map_width + 1)
+        cpl_pad = curses.newpad(len(self.fibs), Mapper.map_width + 1)
 
         update = True
         last_updated = None
@@ -150,7 +189,8 @@ class Mapper:
                 stdscr.clear()
                 map_pad.clear()
                 self.draw_map_border(stdscr)
-                self.draw(map_pad)
+                self.draw_map(map_pad)
+                self.draw_cpl(cpl_pad)
 
                 update = False
                 last_updated = time.time()
@@ -158,6 +198,9 @@ class Mapper:
             ch = stdscr.getch()
             stdscr.refresh()
             map_pad.refresh(0,0, 2,5, min(height - 2, Mapper.map_height + 1),min(width - 3, Mapper.map_width + 3))
+
+            if (height > Mapper.map_height + 3):
+                cpl_pad.refresh(0,0, Mapper.map_height + 3,5, height,width - 3)
 
             if (ch != -1):
                 self.process_input(ch)

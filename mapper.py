@@ -8,6 +8,13 @@ import signal
 import subprocess
 import time
 
+class Point:
+    def __init__(self, lat, long, color, symbol='X'):
+        self.lat = lat
+        self.long = long
+        self.color = color
+        self.symbol = symbol
+
 class Mapper:
     fibs = [0,1,2,3]
 
@@ -57,13 +64,11 @@ class Mapper:
 
     def __init__(self):
         self.quit = False
-        self.inbound_coords = []
-        self.my_coords = []
+        self.points = []
         self.routes = []
 
     def update_data(self):
-        self.my_coords = [[47, -122]]
-        self.inbound_coords = [[41.48222, -81.6697], [-90.1111, -122], [-90, -180]]
+        self.points = [Point(47, -122, Mapper.yellow_on_black), Point(41.48222, -81.6697, Mapper.red_on_black)]
         self.routes = []
 
         for fib in Mapper.fibs:
@@ -106,16 +111,10 @@ class Mapper:
             for x in range(0, min(max_x - 2, len(Mapper.map_lines[y]))):
                     map_pad.addch(y + 1, x + 1, Mapper.map_lines[y][x], Mapper.green_on_black)
 
-        for coord in self.my_coords:
-            x, y = self.lat_long_to_x_y(coord[0], coord[1])
+        for point in self.points:
+            x, y = self.lat_long_to_x_y(point.lat, point.long)
             if (x < max_x - Mapper.border_size and y < max_y - Mapper.border_size):
-                map_pad.addch(y, x, 'x', Mapper.yellow_on_black)
-
-        for coord in self.inbound_coords:
-            x, y = self.lat_long_to_x_y(coord[0], coord[1])
-            if (x < max_x - Mapper.border_size and y < max_y - Mapper.border_size):
-                map_pad.addch(y, x, 'x', Mapper.red_on_black)
-
+                map_pad.addch(y, x, point.symbol, point.color)
 
     def draw_compass(self, stdscr, map_pad_y, map_pad_x, map_pad_h, map_pad_w):
         height, width = stdscr.getmaxyx()

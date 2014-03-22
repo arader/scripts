@@ -64,6 +64,7 @@ class Mapper:
     def update_data(self):
         self.my_coords = [[47, -122]]
         self.inbound_coords = [[41.48222, -81.6697], [-90.1111, -122], [-90, -180]]
+        self.routes = []
 
         for fib in Mapper.fibs:
             ip, country, city = self.get_host_info(fib)
@@ -78,10 +79,12 @@ class Mapper:
         for marker in Mapper.long_markers:
             x,y = self.lat_long_to_x_y(0, marker)
 
-            x += Mapper.border_size
-
             if (x >= max_x - Mapper.border_size):
                 break
+
+            # don't draw at corners
+            if (x == 0 or x == max_x - 1):
+                continue
 
             map_pad.addch(0, x, curses.ACS_TTEE)
             map_pad.addch(max_y - 1, x, curses.ACS_BTEE)
@@ -89,10 +92,12 @@ class Mapper:
         for marker in Mapper.lat_markers:
             x,y = self.lat_long_to_x_y(marker, 0)
 
-            y += Mapper.border_size
-
             if (y >= max_y - Mapper.border_size):
                 break;
+
+            # don't draw at corners
+            if (y == 0 or y == max_y - 1):
+                continue
 
             map_pad.addch(y, 0, curses.ACS_LTEE)
             map_pad.addch(y, max_x - 1, curses.ACS_RTEE)
@@ -103,22 +108,18 @@ class Mapper:
 
         for coord in self.my_coords:
             x, y = self.lat_long_to_x_y(coord[0], coord[1])
-            x += Mapper.border_size
-            y += Mapper.border_size
             if (x < max_x - Mapper.border_size and y < max_y - Mapper.border_size):
                 map_pad.addch(y, x, 'x', Mapper.yellow_on_black)
 
         for coord in self.inbound_coords:
             x, y = self.lat_long_to_x_y(coord[0], coord[1])
-            x += Mapper.border_size
-            y += Mapper.border_size
             if (x < max_x - Mapper.border_size and y < max_y - Mapper.border_size):
                 map_pad.addch(y, x, 'x', Mapper.red_on_black)
 
 
     def draw_compass(self, stdscr, map_pad_y, map_pad_x, map_pad_h, map_pad_w):
         height, width = stdscr.getmaxyx()
-        right_edge = map_pad_x + map_pad_w
+        right_edge = max(map_pad_x + map_pad_w, width)
         bottom_edge = map_pad_y + map_pad_h
 
         for marker in Mapper.long_markers:
@@ -138,7 +139,7 @@ class Mapper:
             elif (marker == 0):
                 label = "000"
 
-            x += Mapper.offset_left + Mapper.compass_left_width + 1
+            x += Mapper.offset_left + Mapper.compass_left_width
 
             label_x = x - int(round((len(label) / 2), 0))
 
@@ -162,7 +163,7 @@ class Mapper:
             else:
                 label = "000"
 
-            y += Mapper.offset_top + Mapper.compass_top_height + 1
+            y += Mapper.offset_top + Mapper.compass_top_height
 
             if (y >= bottom_edge):
                 break
@@ -204,7 +205,6 @@ class Mapper:
         # map is 71x23
         # lat goes from -90 to +90
         # long goes from -180 to +180
-        # 35,11 is 0N,0W
 
         dx = (long + 180)
         dy = (-1 * lat + 90)
@@ -215,8 +215,8 @@ class Mapper:
         if (dy > 180):
             dy = 180
 
-        x = int(round(dx * ((Mapper.map_width - 1) / 360.0), 0))
-        y = int(round(dy * ((Mapper.map_height - 1) / 180.0), 0))
+        x = int(round(dx * ((Mapper.map_width + (2 * Mapper.border_size) - 1) / 360.0), 0))
+        y = int(round(dy * ((Mapper.map_height + (2 * Mapper.border_size) - 1) / 180.0), 0))
 
         return x, y
 

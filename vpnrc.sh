@@ -19,22 +19,63 @@
 #
 
 # service name map (comma delimited)
-vpn_1="transmission"
-#vpn_2="example1,example2"
+vpn_1=""
+vpn_2=""
+vpn_3="transmission"
+
+forward_transmission_port()
+{
+    USER=`cat /usr/local/etc/openvpn/pia-user`
+    PASS=`cat /usr/local/etc/openvpn/pia-pass`
+    CLIENTID=`cat /usr/local/etc/openvpn/pia-clientid`
+
+    fib=$1
+    ip=$2
+    port=""
+
+    log "acquiring forwarded port for $ip"
+
+    attempt=1
+
+    while [ -z "$port" ] && [ $attempt -lt 7 ]
+    do
+        response=`/usr/sbin/setfib $fib /usr/local/bin/curl -s -S --stderr - -d "user=$USER&pass=$PASS&client_id=$CLIENTID&local_ip=$ip" https://www.privateinternetaccess.com/vpninfo/port_forward_assignment`
+
+        port=`echo $response | sed 's/[^0-9]*\([0-9]*\)[^0-9]*/\1/'`
+
+        if [ -z "$port" ]
+        then
+            log "failed to acquire forwarded port (response: '$response'), sleeping before retrying (attempt: $attempt)"
+            sleep 5
+        fi
+
+        attempt=`expr $attempt + 1`
+    done
+
+    if [ ! -z "$port" ]
+    then
+        log "acquired forwarded port $port"
+        /usr/sbin/jexec piracy /usr/local/bin/transmission-remote -p $port
+    else
+        log "failed to acquire forwarded port"
+    fi
+}
 
 # service start/stop functions
 transmission_start()
 {
+    fib=$1
+    ip=$2
     pidfile=/var/run/transmission/daemon.pid
     conf_dir=/usr/local/etc/transmission/home
-    watch_dir=/tank/torrents
-    download_dir=/tank/torrents
-    incomplete_dir=/tank/torrents/active
-    bind_ip=${2:-"127.0.0.1"}
+    watch_dir=/torrents
+    download_dir=/torrents
+    incomplete_dir=/torrents/active
+    bind_ip=${ip:-"127.0.0.1"}
     bind_ip6="::1"
 
     log "starting transmission"
-    /usr/sbin/setfib $1 /usr/local/bin/transmission-daemon \
+    /usr/sbin/jexec piracy /usr/sbin/setfib $fib /usr/local/bin/transmission-daemon \
         -x $pidfile \
         -g $conf_dir \
         -i $bind_ip \
@@ -42,11 +83,13 @@ transmission_start()
         -c $watch_dir \
         --download-dir $download_dir \
         --incomplete-dir $incomplete_dir
+
+    forward_transmission_port $fib $ip &
 }
 
 transmission_stop()
 {
-    pid=`pgrep -F /var/run/transmission/daemon.pid 2>/dev/null`
+    pid=`pgrep -F /usr/jails/piracy/var/run/transmission/daemon.pid 2>/dev/null`
 
     if [ ! -z "$pid" ]
     then
@@ -57,7 +100,7 @@ transmission_stop()
         pwait $pid
     fi
 
-    rm /var/run/transmission/daemon.pid 2>/dev/null
+    rm /usr/jails/piracy/var/run/transmission/daemon.pid 2>/dev/null
 }
 
 usage ()
@@ -171,3 +214,5 @@ then
 else
     usage
 fi
+
+exit 0

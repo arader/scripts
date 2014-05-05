@@ -4,14 +4,20 @@ import curses
 import json
 import math
 import os
+import re
 import signal
 import subprocess
 import time
 
-class Point:
-    def __init__(self, lat, long, color, symbol='X'):
+class Location:
+    def __init__(self, lat, lon):
         self.lat = lat
-        self.long = long
+        self.lon = lon
+
+class Point:
+    def __init__(self, lat, lon, color, symbol='x'):
+        self.lat = lat
+        self.lon = lon
         self.color = color
         self.symbol = symbol
 
@@ -33,7 +39,7 @@ class Mapper:
     map_width = 71
     map_height = 23
 
-    long_markers = [-180, -150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150, 180]
+    lon_markers = [-180, -150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150, 180]
     lat_markers = [90, 60, 30, 0, -30, -60, -90]
 
     map_lines = [
@@ -66,23 +72,99 @@ class Mapper:
         self.quit = False
         self.points = []
         self.routes = []
+        self.last_updated = None
 
-    def update_data(self):
-        self.points = [Point(47, -122, Mapper.yellow_on_black), Point(41.48222, -81.6697, Mapper.red_on_black)]
+    def update_data(self, redraw):
+        self.points = []
         self.routes = []
 
-        for fib in Mapper.fibs:
-            ip, country, city = self.get_host_info(fib)
+        if (not self.last_updated):
+            self.last_updated = time.time() - 500
+            return redraw
 
-            self.routes.append([fib, ip, country, city])
+        if (time.time() - self.last_updated < 300):
+            return redraw
+
+        hosts = self.get_connected_hosts()
+        host_locs = self.get_ip_info(hosts)
+
+        for loc in host_locs:
+            self.points.append(Point(loc.lat, loc.lon, Mapper.red_on_black))
+
+        for fib in Mapper.fibs:
+            ip, lat, lon, country, region, city = self.get_route_info(fib)
+
+            if (lat and lon):
+                self.points.append(Point(lat, lon, Mapper.yellow_on_black))
+
+            self.routes.append([fib, ip, country, region, city])
+
+        self.last_updated = time.time()
+
+        return True
+
+    def get_route_info(self, fib):
+        ip = None
+        lat = None
+        lon = None
+        country = None
+        region = None
+        city = None
+        data = None
+
+        try:
+            with open(os.devnull, 'w') as dev_null:
+                data = json.loads(subprocess.check_output(["setfib", "%s" %fib, "curl", "-s", "http://api.0x666.tk/ip"], stderr=dev_null))
+
+            ip = data['Response'][0]['Address'].encode()
+            lat = data['Response'][0]['GeoLoc']['Latitude']
+            lon = data['Response'][0]['GeoLoc']['Longitude']
+            country = data['Response'][0]['GeoLoc']['Country'].encode()
+            region = data['Response'][0]['GeoLoc']['Region'].encode()
+            city = data['Response'][0]['GeoLoc']['City'].encode()
+        except:
+            pass
+
+        return ip, lat, lon, country, region, city
+
+    def get_connected_hosts(self):
+        hosts = []
+
+        with open(os.devnull, 'w') as dev_null:
+            pattern = re.compile('\S+[ ]+\S+[ ]+\S+[ ]+\S+[ ]+([0-9a-f.:]+)\.[0-9]+')
+            lines = subprocess.check_output(["netstat", "-f", "inet", "-n"]).split('\n')
+
+            for line in lines:
+                match = pattern.match(line)
+                if (match):
+                    hosts.append(match.group(1))
+
+        return hosts
+
+    def get_ip_info(self, ips):
+        locs = []
+
+        try:
+            with open(os.devnull, 'w') as dev_null:
+                data = json.loads(subprocess.check_output(["curl", "-s", "http://api.0x666.tk/ip?a=" + ','.join(ips)], stderr=dev_null))
+
+            for loc in data['Response']:
+                lat = loc['GeoLoc']['Latitude']
+                lon = loc['GeoLoc']['Longitude']
+
+                locs.append(Location(lat, lon))
+        except:
+            pass
+
+        return locs
 
     def draw_map(self, map_pad):
         max_y, max_x = map_pad.getmaxyx()
 
         map_pad.border()
 
-        for marker in Mapper.long_markers:
-            x,y = self.lat_long_to_x_y(0, marker)
+        for marker in Mapper.lon_markers:
+            x,y = self.lat_lon_to_x_y(0, marker)
 
             if (x >= max_x - Mapper.border_size):
                 break
@@ -95,7 +177,7 @@ class Mapper:
             map_pad.addch(max_y - 1, x, curses.ACS_BTEE)
 
         for marker in Mapper.lat_markers:
-            x,y = self.lat_long_to_x_y(marker, 0)
+            x,y = self.lat_lon_to_x_y(marker, 0)
 
             if (y >= max_y - Mapper.border_size):
                 break;
@@ -112,7 +194,7 @@ class Mapper:
                     map_pad.addch(y + 1, x + 1, Mapper.map_lines[y][x], Mapper.green_on_black)
 
         for point in self.points:
-            x, y = self.lat_long_to_x_y(point.lat, point.long)
+            x, y = self.lat_lon_to_x_y(point.lat, point.lon)
             if (x < max_x - Mapper.border_size and y < max_y - Mapper.border_size):
                 map_pad.addch(y, x, point.symbol, point.color)
 
@@ -121,8 +203,8 @@ class Mapper:
         right_edge = max(map_pad_x + map_pad_w, width)
         bottom_edge = map_pad_y + map_pad_h
 
-        for marker in Mapper.long_markers:
-            x,y = self.lat_long_to_x_y(0, marker)
+        for marker in Mapper.lon_markers:
+            x,y = self.lat_lon_to_x_y(0, marker)
             label = "{0}".format(int(math.fabs(marker)))
 
             if (marker % 180 and marker < 0):
@@ -152,7 +234,7 @@ class Mapper:
                 stdscr.addch(Mapper.offset_top, label_x + i, label[i], Mapper.cyan_on_black)
 
         for marker in Mapper.lat_markers:
-            x,y = self.lat_long_to_x_y(marker, 0)
+            x,y = self.lat_lon_to_x_y(marker, 0)
             label = "{0}".format(int(math.fabs(marker)))
 
             if (marker < 0):
@@ -189,7 +271,7 @@ class Mapper:
                 cpl_pad.addch(y, route_ip_x + i, route_ip[i], route_ip_color)
 
             if (route[1]):
-                locale = "%s, %s" % (route[3], route[2])
+                locale = "%s %s, %s" % (route[4], route[3], route[2])
                 locale_x = max(route_ip_x + len(route_ip) + 1, max_x - len(locale) - 1)
 
                 for i in range(0, min(len(locale), max_x - locale_x - 1)):
@@ -200,12 +282,12 @@ class Mapper:
             if (y >= max_y - 1):
                 break
 
-    def lat_long_to_x_y(self, lat, long):
+    def lat_lon_to_x_y(self, lat, lon):
         # map is 71x23
         # lat goes from -90 to +90
-        # long goes from -180 to +180
+        # lon goes from -180 to +180
 
-        dx = (long + 180)
+        dx = (lon + 180)
         dy = (-1 * lat + 90)
 
         if (dx > 360):
@@ -218,25 +300,6 @@ class Mapper:
         y = int(round(dy * ((Mapper.map_height + (2 * Mapper.border_size) - 1) / 180.0), 0))
 
         return x, y
-
-    def get_host_info(self, fib):
-        ip = None
-        country = None
-        city = None
-
-        try:
-            with open(os.devnull, 'w') as dev_null:
-                data = json.loads(subprocess.check_output(["setfib", "%s" % fib, "curl", "-s", "http://api.hostip.info/get_json.php"], stderr=dev_null))
-
-            ip = data['ip'].encode()
-            country = data['country_code'].encode()
-            city = data['city'].encode()
-        except:
-            ip = None
-            country = None
-            city = None
-
-        return ip, country, city
 
     def process_input(self, value):
         if (value == ord("q")):
@@ -258,7 +321,6 @@ class Mapper:
         Mapper.cyan_on_black = curses.color_pair(4)
 
         redraw = True
-        last_updated = time.time() - 1000
 
         map_pad = None
         map_pad_y = None
@@ -277,10 +339,8 @@ class Mapper:
 
         while not self.quit:
 
-            if (time.time() - last_updated > 300):
-                self.update_data()
+            if (self.update_data(redraw)):
                 redraw = True
-                last_updated = time.time()
 
             if (redraw):
                 max_y, max_x = stdscr.getmaxyx()

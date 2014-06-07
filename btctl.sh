@@ -6,7 +6,18 @@
 # torrents.
 #
 
-WATCHDIRS="/share/torrents/anime /share/torrents/movies /share/torrents/television"
+WATCHDIR_1="/share/downloads/torrents/anime"
+ACTIVEDIR_1="/share/downloads/active"
+COMPLETEDIR_1="/share/downloads/complete/anime"
+
+WATCHDIR_2="/share/downloads/torrents/movies"
+ACTIVEDIR_2="/share/downloads/active"
+COMPLETEDIR_2="/share/downloads/complete/movies"
+
+WATCHDIR_3="/share/downloads/torrents/television"
+ACTIVEDIR_3="/share/downloads/active"
+COMPLETEDIR_3="/share/downloads/complete/television"
+
 REMOTE="/usr/local/bin/transmission-remote "
 GREP="/usr/bin/grep"
 SED="/usr/bin/sed"
@@ -21,25 +32,38 @@ usage ()
 
 scan()
 {
-    for dir in $WATCHDIRS
-    do
-        log "scanning $dir"
+    iter=1
 
-        for torrent in "$dir"/*.torrent
-        do
-            if [ "$torrent" != "$dir/*.torrent" ]
-            then
-                log "found torrent: $torrent"
-                output=`$REMOTE --add "$torrent" --download-dir "$dir"`
+    while [ 1 ]
+    do
+        watchdir="$(eval echo \${WATCHDIR_${iter}})"
+        activedir="$(eval echo \${ACTIVEDIR_${iter}})"
+        completedir="$(eval echo \${COMPLETEDIR_${iter}})"
+
+        if [ -z "$watchdir" ] || [ -z "$activedir" ] || [ -z "$completedir" ]
+        then
+            break
+        else
+            log "scanning $watchdir"
     
-                if [ $? == 0 ]
+            for torrent in "$watchdir"/*.torrent
+            do
+                if [ "$torrent" != "$watchdir/*.torrent" ]
                 then
-                    /bin/rm -f "$torrent"
-                else
-                    log "failed to add torrent: $output"
+                    log "found torrent: $torrent"
+                    output=`$REMOTE --add "$torrent" --incomplete-dir "$activedir" --download-dir "$completedir"`
+
+                    if [ $? == 0 ]
+                    then
+                        /bin/rm -f "$torrent"
+                    else
+                        log "failed to add torrent: $output"
+                    fi
                 fi
-            fi
-        done
+            done
+        fi
+
+        iter=`expr $iter + 1`
     done
 }
 

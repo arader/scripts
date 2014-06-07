@@ -21,7 +21,7 @@
 # service name map (comma delimited)
 vpn_1=""
 vpn_2=""
-vpn_3="transmission"
+vpn_3="transmission,sabnzbd"
 
 forward_transmission_port()
 {
@@ -41,7 +41,10 @@ forward_transmission_port()
     do
         response=`/usr/sbin/setfib $fib /usr/local/bin/curl -s -S --stderr - -d "user=$USER&pass=$PASS&client_id=$CLIENTID&local_ip=$ip" https://www.privateinternetaccess.com/vpninfo/port_forward_assignment`
 
-        port=`echo $response | sed 's/[^0-9]*\([0-9]*\)[^0-9]*/\1/'`
+        if [ "$?" -eq 0 ]
+        then
+            port=`echo $response | sed 's/[^0-9]*\([0-9]*\)[^0-9]*/\1/'`
+        fi
 
         if [ -z "$port" ]
         then
@@ -66,16 +69,17 @@ transmission_start()
 {
     fib=$1
     ip=$2
+    user=pirate
     pidfile=/var/run/transmission/daemon.pid
     conf_dir=/usr/local/etc/transmission/home
-    watch_dir=/torrents
-    download_dir=/torrents
-    incomplete_dir=/torrents/active
+    watch_dir=/share/downloads/torrents
+    download_dir=/share/downloads/complete
+    incomplete_dir=/share/downloads/active
     bind_ip=${ip:-"127.0.0.1"}
     bind_ip6="::1"
 
     log "starting transmission"
-    /usr/sbin/jexec piracy /usr/sbin/setfib $fib /usr/local/bin/transmission-daemon \
+    /usr/sbin/jexec -U $user piracy /usr/sbin/setfib $fib /usr/local/bin/transmission-daemon \
         -x $pidfile \
         -g $conf_dir \
         -i $bind_ip \
@@ -101,6 +105,36 @@ transmission_stop()
     fi
 
     rm /usr/jails/piracy/var/run/transmission/daemon.pid 2>/dev/null
+}
+
+sabnzbd_start()
+{
+    fib=$1
+    ip=$2
+    user=pirate
+    python=/usr/local/bin/python2.7
+    command=/usr/local/bin/SABnzbd.py
+    pidfile=/var/run/sabnzbd/sabnzbd.pid
+    conf_dir=/usr/local/sabnzbd
+
+    log "starting sabnzbd"
+    /usr/sbin/jexec -U $user piracy /usr/sbin/setfib $fib $python -OO $command --daemon -f $conf_dir/sabnzbd.ini --pidfile $pidfile
+}
+
+sabnzbd_stop()
+{
+    pid=`pgrep -F /usr/jails/piracy/var/run/sabnzbd/sabnzbd.pid 2>/dev/null`
+
+    if [ ! -z "$pid" ]
+    then
+        log "stopping sabnzbd"
+        kill -TERM $pid
+
+        log "waiting on PID $pid"
+        pwait $pid
+    fi
+
+    rm /usr/jails/piracy/var/run/sabnzbd/sabnzbd.pid 2>/dev/null
 }
 
 usage ()

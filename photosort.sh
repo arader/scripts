@@ -72,7 +72,20 @@ move()
             log "failed to move the file '$file', trying again (new filename: '$destfilename')"
         fi
 
-        mv -n "$file" "$dest/$destfilename"
+        if [ -e "$dest/$destfilename" ]
+        then
+            orighash=`sha1 -q "$file"`
+            desthash=`sha1 -q "$dest/$destfilename"`
+
+            if [ "$orighash" == "$desthash" ]
+            then
+                log "duplicate file '$file' detected at '$dest/$destfilename', deleting '$file'"
+                rm "$file"
+            fi
+
+        else
+            mv -n "$file" "$dest/$destfilename"
+        fi
         counter=`expr $counter + 1`
     done
 

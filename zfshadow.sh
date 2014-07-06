@@ -26,6 +26,9 @@ process_dataset()
         return
     fi
 
+    # make sure we can actually write the data
+    ssh $host zfs set readonly=off "$remote"
+
     # blindly try to create the recursive base snapshots, then check the
     # return code to branch on either sending the initial data, or sending
     # an incremental stream.
@@ -33,10 +36,15 @@ process_dataset()
 
     if [ $? == 0 ]
     then
-        # the base snapshot was just created
-        zfs send -R "$local"@$base_snap | ssh $host zfs recv -d "$remote"
+        # the base snapshot was just created, destroy any remote data
+        # and start fresh
+        log "initial snapshot created, clearing remote host's copy (if any)"
 
-        ssh $host zfs set readonly=on "$remote"
+        remotefs="$remote`echo $local | sed 's|[^/]*||'`"
+
+        ssh $host zfs destroy -r "$remotefs"
+        zfs destroy -r "$local"@$delta_snap
+        zfs send -R "$local"@$base_snap | ssh $host zfs recv -d "$remote"
     else
         # the base snapshot already exists
         zfs snapshot -r "$local"@$delta_snap >/dev/null 2>&1
@@ -49,8 +57,6 @@ process_dataset()
             log "failed to create "$local@$delta_snap", attempting to re-send"
             resend=1
         fi
-
-        ssh $host zfs set readonly=off "$remote"
 
         zfs send -R -i @$base_snap "$local"@$delta_snap | ssh $host zfs recv -d "$remote"
 
@@ -68,9 +74,9 @@ process_dataset()
             fi
         fi
 
-        ssh $host zfs set readonly=on "$remote"
-
     fi
+
+    ssh $host zfs set readonly=on "$remote"
 }
 
 log()
@@ -82,7 +88,6 @@ log()
 fail()
 {
     ec=1
-    echo $1
     log $1
 }
 

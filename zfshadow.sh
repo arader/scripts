@@ -29,91 +29,84 @@ process_dataset()
     # make sure we can actually write the data
     ssh $host zfs set readonly=off "$remote" >/dev/null 2>&1
 
-    # blindly try to create the recursive base snapshots, then check the
-    # return code to branch on either sending the initial data, or sending
-    # an incremental stream.
-    zfs snapshot -r "$local"@$base_snap >/dev/null 2>&1
+    # get a list of all the datasets under the specified dataset
+    datasets=`zfs list -H -r -o name $local`
 
-    if [ $? == 0 ]
-    then
-        # the base snapshot was just created, destroy any remote data
-        # and start fresh
-        log "initial snapshot created, clearing remote host's copy (if any)"
+    # iterate through each dataset and send a backup
+    for dataset in $datasets
+    do
+        # calculate what the remote dataset's name is
+        remote_dataset="$remote`echo $dataset | sed 's|^[^/]*||'`"
 
-        remotefs="$remote`echo $local | sed 's|[^/]*||'`"
+        # blindly try to create the base snapshot, then check the
+        # return code to branch on either sending the initial data, or sending
+        # an incremental stream.
+        zfs snapshot $dataset@$base_snap >/dev/null 2>&1
 
-        ssh $host zfs destroy -r "$remotefs" > /dev/null 2>&1
-        zfs destroy -r "$local"@$delta_snap > /dev/null 2>&1 
-
-        snaps=`zfs list -H -r -t snapshot -o name $local | grep @$base_snap\$`
-
-        for snap in $snaps
-        do
-            send_output=`zfs send $snap | ssh $host zfs recv -dvF $remote`
-
-            if [ $? == 0 ]
-            then
-                log "successfully sent snapshot '$snap'"
-            else
-                fail "failed to send snapshot '$snap', output: '$send_output'"
-                fail "destroying newly created base snapshot"
-
-                zfs destroy -r "$local"@$base_snap > /dev/null 2>&1
-
-                break
-            fi
-        done
-    else
-        # the base snapshot already exists
-        zfs snapshot -r "$local"@$delta_snap >/dev/null 2>&1
-
-        if [ $? != 0 ]
+        if [ $? == 0 ]
         then
-            # something went wrong with a previous iteration of this script
-            # that caused the delta snap to be left around. Don't create
-            # a new delta snap, just try to re send the last one
-            log "failed to create "$local@$delta_snap", attempting to re-send"
-            resend=1
-        fi
+            # the base snapshot was just created, destroy any remote data
+            # and start fresh
+            log "initial snapshot $datset@$base_snap created, clearing remote host's copy (if any)"
 
-        snaps=`zfs list -H -r -t snapshot -o name $local | grep @$delta_snap\$`
+            ssh $host zfs destroy -r "$remote_dataset" > /dev/null 2>&1
+            zfs destroy $dataset@$delta_snap > /dev/null 2>&1 
 
-        for snap in $snaps
-        do
-            send_output=`zfs send -i $base_snap $snap | ssh $host zfs recv -dvF $remote`
+            send_output=`zfs send $dataset@$base_snap | ssh $host zfs recv -dvF $remote`
 
             if [ $? == 0 ]
             then
-                log "sent delta, updating snapshots"
-                old_local_base=`echo $snap | sed 's/@[^@]*$//'`@$base_snap
-                old_remote_base="$remote`echo $old_local_base | sed 's|^[^/]*||'`"
-                old_remote_delta="$remote`echo $snap | sed 's|^[^/]*||'`"
-                log "destroying local snapshot $old_local_base"
-                zfs destroy $old_local_base >/dev/null 2>&1
-                log "renaming local snapshot $snap to $old_local_base"
-                zfs rename $snap $old_local_base >/dev/null 2>&1
-                log "destroying remote snapshot $old_remote_base"
-                ssh $host zfs destroy $old_remote_base >/dev/null 2>&1
-                log "renaming remote snapshot $old_remote_delta to $old_remote_base"
-                ssh $host zfs rename $old_remote_delta $old_remote_base >/dev/null 2>&1
+                log "successfully sent snapshot '$dataset@$base_snap'"
             else
-                log "failed to send $snap, output:'$send_output'"
+                fail "failed to send snapshot '$dataset@$base_snap', output: '$send_output', destroying newly created base snapshot"
+
+                # destroy the newly created base snapshot so that the next time
+                # this script is run, the base snapshot will be re-created and
+                # re-sent
+                zfs destroy -r $dataset@$base_snap > /dev/null 2>&1
+            fi
+        else
+            # the base snapshot already exists
+            zfs snapshot $dataset@$delta_snap >/dev/null 2>&1
+
+            if [ $? != 0 ]
+            then
+                # something went wrong with a previous iteration of this script
+                # that caused the delta snap to be left around. Don't create
+                # a new delta snap, just try to re send the last one
+                log "failed to create $dataset@$delta_snap, attempting to re-send"
+                resend=1
+            fi
+
+            send_output=`zfs send -i $base_snap $dataset@$delta_snap | ssh $host zfs recv -dvF $remote`
+
+            if [ $? == 0 ]
+            then
+                log "successfully sent $dataset@$delta_snap, updating base snapshot"
+                log "    destroying local snapshot $dataset@$base_snap"
+                zfs destroy $dataset@$base_snap >/dev/null 2>&1
+                log "    renaming local snapshot $dataset@$delta_snap to $dataset@$base_snap"
+                zfs rename $dataset@$delta_snap $dataset@$base_snap >/dev/null 2>&1
+                log "    destroying remote snapshot $remote_dataset@$base_snap"
+                ssh $host zfs destroy $remote_dataset@$base_snap >/dev/null 2>&1
+                log "    renaming remote snapshot $remote_dataset@$delta_snap to $remote_dataset@$base_snap"
+                ssh $host zfs rename $remote_dataset@$delta_snap $remote_dataset@$base_snap >/dev/null 2>&1
+            else
+                fail "failed to send $dataset@$delta_snap, output:'$send_output'"
+
                 if [ $resend ]
                 then
-                    log "failed to send "$local@$delta_snap" for a second time"
-                else
-                    log "failed to send "$local@$delta_snap", will retry again later"
                 fi
             fi
-        done
-    fi
+        fi
+    done
 
     ssh $host zfs set readonly=on "$remote" >/dev/null 2>&1
 }
 
 log()
 {
-    echo $1
+    echo "$1"
     logger -t $self "$1"
 }
 

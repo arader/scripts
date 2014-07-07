@@ -27,7 +27,7 @@ process_dataset()
     fi
 
     # make sure we can actually write the data
-    ssh $host zfs set readonly=off "$remote"
+    ssh $host zfs set readonly=off "$remote" >/dev/null 2>&1
 
     # blindly try to create the recursive base snapshots, then check the
     # return code to branch on either sending the initial data, or sending
@@ -42,9 +42,27 @@ process_dataset()
 
         remotefs="$remote`echo $local | sed 's|[^/]*||'`"
 
-        ssh $host zfs destroy -r "$remotefs"
-        zfs destroy -r "$local"@$delta_snap
-        zfs send -R "$local"@$base_snap | ssh $host zfs recv -d "$remote"
+        ssh $host zfs destroy -r "$remotefs" > /dev/null 2>&1
+        zfs destroy -r "$local"@$delta_snap > /dev/null 2>&1 
+
+        snaps=`zfs list -H -r -t snapshot -o name $local | grep @$base_snap\$`
+
+        for snap in $snaps
+        do
+            send_output=`zfs send $snap | ssh $host zfs recv -dvF $remote`
+
+            if [ $? == 0 ]
+            then
+                log "successfully sent snapshot '$snap'"
+            else
+                fail "failed to send snapshot '$snap', output: '$send_output'"
+                fail "destroying newly created base snapshot"
+
+                zfs destroy -r "$local"@$base_snap > /dev/null 2>&1
+
+                break
+            fi
+        done
     else
         # the base snapshot already exists
         zfs snapshot -r "$local"@$delta_snap >/dev/null 2>&1
@@ -58,25 +76,39 @@ process_dataset()
             resend=1
         fi
 
-        zfs send -R -i @$base_snap "$local"@$delta_snap | ssh $host zfs recv -d "$remote"
+        snaps=`zfs list -H -r -t snapshot -o name $local | grep @$delta_snap\$`
 
-        if [ $? == 0 ]
-        then
-            log "sent delta, updating snapshots"
-            zfs destroy -r "$local"@$base_snap
-            zfs rename -r "$local"@$delta_snap "$local"@$base_snap
-        else
-            if [ $resend ]
+        for snap in $snaps
+        do
+            send_output=`zfs send -i $base_snap $snap | ssh $host zfs recv -dvF $remote`
+
+            if [ $? == 0 ]
             then
-                log "failed to send "$local@$delta_snap" for a second time"
+                log "sent delta, updating snapshots"
+                old_local_base=`echo $snap | sed 's/@[^@]*$//'`@$base_snap
+                old_remote_base="$remote`echo $old_local_base | sed 's|^[^/]*||'`"
+                old_remote_delta="$remote`echo $snap | sed 's|^[^/]*||'`"
+                log "destroying local snapshot $old_local_base"
+                zfs destroy $old_local_base >/dev/null 2>&1
+                log "renaming local snapshot $snap to $old_local_base"
+                zfs rename $snap $old_local_base >/dev/null 2>&1
+                log "destroying remote snapshot $old_remote_base"
+                ssh $host zfs destroy $old_remote_base >/dev/null 2>&1
+                log "renaming remote snapshot $old_remote_delta to $old_remote_base"
+                ssh $host zfs rename $old_remote_delta $old_remote_base >/dev/null 2>&1
             else
-                log "failed to send "$local@$delta_snap", will retry again later"
+                log "failed to send $snap, output:'$send_output'"
+                if [ $resend ]
+                then
+                    log "failed to send "$local@$delta_snap" for a second time"
+                else
+                    log "failed to send "$local@$delta_snap", will retry again later"
+                fi
             fi
-        fi
-
+        done
     fi
 
-    ssh $host zfs set readonly=on "$remote"
+    ssh $host zfs set readonly=on "$remote" >/dev/null 2>&1
 }
 
 log()

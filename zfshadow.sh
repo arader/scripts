@@ -63,7 +63,7 @@ process_dataset()
                 # destroy the newly created base snapshot so that the next time
                 # this script is run, the base snapshot will be re-created and
                 # re-sent
-                zfs destroy -r $dataset@$base_snap > /dev/null 2>&1
+                zfs destroy $dataset@$base_snap > /dev/null 2>&1
             fi
         else
             # the base snapshot already exists

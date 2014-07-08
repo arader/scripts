@@ -55,7 +55,7 @@ process_dataset()
             ssh $host -p $port zfs destroy -r "$remote_dataset" > /dev/null 2>&1
             zfs destroy $dataset@$delta_snap > /dev/null 2>&1 
 
-            send_output=`zfs send $dataset@$base_snap | ssh $host -p $port zfs recv -duvF $remote 2>&1`
+            send_output=`zfs send $dataset@$base_snap | gzip | ssh $host -p $port "gzcat | zfs recv -duvF $remote" 2>&1`
 
             if [ $? == 0 ]
             then
@@ -106,7 +106,7 @@ process_dataset()
                 continue
             fi
 
-            send_output=`zfs send -i $base_snap $dataset@$delta_snap | ssh $host -p $port zfs recv -duvF $remote 2>&1`
+            send_output=`zfs send -i $base_snap $dataset@$delta_snap | gzip | ssh $host -p $port "gzcat | zfs recv -duvF $remote" 2>&1`
 
             if [ $? == 0 ]
             then

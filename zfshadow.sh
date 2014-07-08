@@ -27,9 +27,6 @@ process_dataset()
         return
     fi
 
-    # make sure we can actually write the data
-    ssh $host -p $port zfs set readonly=off "$remote" >/dev/null 2>&1
-
     # get a list of all the datasets under the specified dataset
     datasets=`zfs list -H -r -o name $local`
 
@@ -40,6 +37,9 @@ process_dataset()
 
         # calculate what the remote dataset's name is
         remote_dataset="$remote`echo $dataset | sed 's|^[^/]*||'`"
+
+        # make sure the dataset isn't mounted
+        ssh $host -p $port zfs umount $remote_dataset >/dev/null 2>&1
 
         # blindly try to create the base snapshot, then check the
         # return code to branch on either sending the initial data, or sending
@@ -55,7 +55,7 @@ process_dataset()
             ssh $host -p $port zfs destroy -r "$remote_dataset" > /dev/null 2>&1
             zfs destroy $dataset@$delta_snap > /dev/null 2>&1 
 
-            send_output=`zfs send $dataset@$base_snap | ssh $host -p $port zfs recv -dvF $remote 2>&1`
+            send_output=`zfs send $dataset@$base_snap | ssh $host -p $port zfs recv -duvF $remote 2>&1`
 
             if [ $? == 0 ]
             then
@@ -106,7 +106,7 @@ process_dataset()
                 continue
             fi
 
-            send_output=`zfs send -i $base_snap $dataset@$delta_snap | ssh $host -p $port zfs recv -dvF $remote 2>&1`
+            send_output=`zfs send -i $base_snap $dataset@$delta_snap | ssh $host -p $port zfs recv -duvF $remote 2>&1`
 
             if [ $? == 0 ]
             then
@@ -121,9 +121,10 @@ process_dataset()
                 zfs destroy $dataset@$delta_snap
             fi
         fi
-    done
 
-    ssh $host -p $port zfs set readonly=on "$remote" >/dev/null 2>&1
+        # finally, re-mount the dataset
+        ssh $host -p $port zfs mount $remote_dataset >/dev/null 2>&1
+    done
 }
 
 update_snapshots()

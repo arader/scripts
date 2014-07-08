@@ -7,6 +7,7 @@
 PATH=/bin:/usr/bin:/sbin
 
 host="$1"
+port="$2"
 self="`basename $0`"
 dotpid="/var/run/$self.pid"
 base_snap="shadow.base"
@@ -27,7 +28,7 @@ process_dataset()
     fi
 
     # make sure we can actually write the data
-    ssh $host zfs set readonly=off "$remote" >/dev/null 2>&1
+    ssh $host -p $port zfs set readonly=off "$remote" >/dev/null 2>&1
 
     # get a list of all the datasets under the specified dataset
     datasets=`zfs list -H -r -o name $local`
@@ -35,6 +36,8 @@ process_dataset()
     # iterate through each dataset and send a backup
     for dataset in $datasets
     do
+        log "processing $dataset at `date`"
+
         # calculate what the remote dataset's name is
         remote_dataset="$remote`echo $dataset | sed 's|^[^/]*||'`"
 
@@ -47,18 +50,18 @@ process_dataset()
         then
             # the base snapshot was just created, destroy any remote data
             # and start fresh
-            log "initial snapshot $datset@$base_snap created, clearing remote host's copy (if any)"
+            log "initial snapshot $dataset@$base_snap created, clearing remote host's copy (if any)"
 
-            ssh $host zfs destroy -r "$remote_dataset" > /dev/null 2>&1
+            ssh $host -p $port zfs destroy -r "$remote_dataset" > /dev/null 2>&1
             zfs destroy $dataset@$delta_snap > /dev/null 2>&1 
 
-            send_output=`zfs send $dataset@$base_snap | ssh $host zfs recv -dvF $remote`
+            send_output=`zfs send $dataset@$base_snap | ssh $host -p $port zfs recv -dvF $remote 2>&1`
 
             if [ $? == 0 ]
             then
                 log "successfully sent snapshot '$dataset@$base_snap'"
             else
-                fail "failed to send snapshot '$dataset@$base_snap', output: '$send_output', destroying newly created base snapshot"
+                fail "failed to send snapshot '$dataset@$base_snap', destroying newly created base snapshot - output: $send_output"
 
                 # destroy the newly created base snapshot so that the next time
                 # this script is run, the base snapshot will be re-created and
@@ -66,42 +69,83 @@ process_dataset()
                 zfs destroy $dataset@$base_snap > /dev/null 2>&1
             fi
         else
-            # the base snapshot already exists
-            zfs snapshot $dataset@$delta_snap >/dev/null 2>&1
+            # first check to see if there already is an existing delta snapshot. If
+            # there is, then this means we were unable to clean up the remote host's snapshots
+            # and should do so now. Otherwise, create the delta snapshot and send.
+
+            # try up to 6 times to clean up any existing delta snapshots
+            for attempt in 1 2 3 4 5 6
+            do
+                zfs list -H -o name $dataset@$delta_snap >/dev/null 2>&1
+
+                if [ $? != 0 ]
+                then
+                    # there aren't any delta snapshots on this machine, so break out of the loop
+                    break
+                else
+                    log "delta snapshot $dataset@$delta_snap still exists, updating remote snapshots (attempt #$attempt)"
+
+                    update_snapshots $dataset $remote_dataset
+
+                    # on the off chance that we failed to update the snapshots again,
+                    # sleep 10 seconds so that each attempt is made 10 seconds apart
+                    sleep 10
+                fi
+            done
+
+            snapshot_output=`zfs snapshot $dataset@$delta_snap 2>&1`
 
             if [ $? != 0 ]
             then
-                # something went wrong with a previous iteration of this script
-                # that caused the delta snap to be left around. Don't create
-                # a new delta snap, just try to re send the last one
-                log "failed to create $dataset@$delta_snap, attempting to re-send"
-                resend=1
+                # despite trying to clean up any left over snapshots, we still
+                # failed to create a snapshot. go ahead and abort for now, with the
+                # hope that a later invocation of this script will have success
+                fail "failed to create the delta snapshot '$dataset@$delta_snap' - output: $snapshot_output"
+
+                # move on to the next dataset
+                continue
             fi
 
-            send_output=`zfs send -i $base_snap $dataset@$delta_snap | ssh $host zfs recv -dvF $remote`
+            send_output=`zfs send -i $base_snap $dataset@$delta_snap | ssh $host -p $port zfs recv -dvF $remote 2>&1`
 
             if [ $? == 0 ]
             then
                 log "successfully sent $dataset@$delta_snap, updating base snapshot"
-                log "    destroying local snapshot $dataset@$base_snap"
-                zfs destroy $dataset@$base_snap >/dev/null 2>&1
-                log "    renaming local snapshot $dataset@$delta_snap to $dataset@$base_snap"
-                zfs rename $dataset@$delta_snap $dataset@$base_snap >/dev/null 2>&1
-                log "    destroying remote snapshot $remote_dataset@$base_snap"
-                ssh $host zfs destroy $remote_dataset@$base_snap >/dev/null 2>&1
-                log "    renaming remote snapshot $remote_dataset@$delta_snap to $remote_dataset@$base_snap"
-                ssh $host zfs rename $remote_dataset@$delta_snap $remote_dataset@$base_snap >/dev/null 2>&1
-            else
-                fail "failed to send $dataset@$delta_snap, output:'$send_output'"
 
-                if [ $resend ]
-                then
-                fi
+                update_snapshots $dataset $remote_dataset
+            else
+                fail "failed to send $dataset@$delta_snap, destroying newly created delta snapshot - output: $send_output"
+
+                # since we couldn't send it, just destroy it. If this
+                # script gets invoked again the delta snapshot will just be recreated.
+                zfs destroy $dataset@$delta_snap
             fi
         fi
     done
 
-    ssh $host zfs set readonly=on "$remote" >/dev/null 2>&1
+    ssh $host -p $port zfs set readonly=on "$remote" >/dev/null 2>&1
+}
+
+update_snapshots()
+{
+    # process remote snapshots
+    log "    destroying remote snapshot $2@$base_snap"
+    ssh $host -p $port zfs destroy $2@$base_snap >/dev/null 2>&1
+
+    log "    renaming remote snapshot $2@$delta_snap to $2@$base_snap"
+    rename_output=`ssh $host -p $port zfs rename $2@$delta_snap $2@$base_snap 2>&1`
+
+    if [ $? == 0 ]
+    then
+        # process local snapshots
+        log "    destroying local snapshot $1@$base_snap"
+        zfs destroy $1@$base_snap >/dev/null 2>&1
+
+        log "    renaming local snapshot $1@$delta_snap to $1@$base_snap"
+        zfs rename $1@$delta_snap $1@$base_snap >/dev/null 2>&1
+    else
+        fail "failed to rename the remote snapshot $2@$delta_snap to $2@$base_snap - output: $rename_output"
+    fi
 }
 
 log()
@@ -113,13 +157,14 @@ log()
 fail()
 {
     ec=1
-    log $1
+    log "FAILURE: $1"
 }
 
 usage()
 {
-    echo "usage: $self dest_host local_dataset1:remote_dataset1 [local_dataset2:remote_dataset2] ..."
+    echo "usage: $self dest_host dest_host_port local_dataset1:remote_dataset1 [local_dataset2:remote_dataset2] ..."
     echo " dest_host: the destination host to receive the datasets from"
+    echo " dest_host_port: the destination host's ssh port"
     echo " local_dataset1: the local dataset to replicate"
     echo " remote_dataset1: the place to replicate local_dataset1 to"
 }
@@ -147,7 +192,7 @@ fi
 echo $$ > $dotpid
 
 shift
-
+shift
 
 while [ $# -gt 0 ]
 do

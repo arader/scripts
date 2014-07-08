@@ -6,8 +6,8 @@
 
 PATH=/bin:/usr/bin:/sbin
 
-host="$1"
-port="$2"
+host=""
+port=""
 self="`basename $0`"
 dotpid="/var/run/$self.pid"
 base_snap="shadow.base"
@@ -163,9 +163,10 @@ fail()
 
 usage()
 {
-    echo "usage: $self dest_host dest_host_port local_dataset1:remote_dataset1 [local_dataset2:remote_dataset2] ..."
+    echo "usage: $self [-p port] [-h] dest_host local_dataset1:remote_dataset1 [local_dataset2:remote_dataset2] ..."
+    echo " -p port: the ssh port to connect to on the remote host"
+    echo " -h: print this help"
     echo " dest_host: the destination host to receive the datasets from"
-    echo " dest_host_port: the destination host's ssh port"
     echo " local_dataset1: the local dataset to replicate"
     echo " remote_dataset1: the place to replicate local_dataset1 to"
 }
@@ -176,11 +177,43 @@ then
     exit 1
 fi
 
+while getopts ":p:h" opt
+do
+    case $opt in
+        p)
+            if [ ! -z $port ]
+            then
+                usage
+                exit 1
+            fi
+
+            port=$OPTARG
+            ;;
+        h)
+            usage
+            exit 0
+            ;;
+        \?)
+            usage
+            exit 1
+            ;;
+        :)
+            usage
+            exit 1
+            ;;
+    esac
+
+    shift $(($OPTIND-1))
+done
+
 if [ $# -lt 2 ]
 then
     usage
     exit 1
 fi
+
+host=$1
+shift
 
 pid=`pgrep -F $dotpid 2>/dev/null`
 
@@ -191,9 +224,6 @@ then
 fi
 
 echo $$ > $dotpid
-
-shift
-shift
 
 while [ $# -gt 0 ]
 do

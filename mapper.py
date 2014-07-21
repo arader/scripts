@@ -2,12 +2,15 @@
 
 import curses
 import json
+import locale
 import math
 import os
 import re
 import signal
 import subprocess
 import time
+
+encoding = locale.getdefaultlocale()[1]
 
 class Location:
     def __init__(self, lat, lon):
@@ -114,14 +117,14 @@ class Mapper:
 
         try:
             with open(os.devnull, 'w') as dev_null:
-                data = json.loads(subprocess.check_output(["setfib", "%s" %fib, "curl", "-s", "http://api.0x666.tk/ip"], stderr=dev_null))
+                data = json.loads(subprocess.check_output(["setfib", "%s" %fib, "curl", "-s", "http://api.0x666.tk/ip"], stderr=dev_null).decode(encoding))
 
-            ip = data['Response'][0]['Address'].encode()
+            ip = data['Response'][0]['Address']
             lat = data['Response'][0]['GeoLoc']['Latitude']
             lon = data['Response'][0]['GeoLoc']['Longitude']
-            country = data['Response'][0]['GeoLoc']['Country'].encode()
-            region = data['Response'][0]['GeoLoc']['Region'].encode()
-            city = data['Response'][0]['GeoLoc']['City'].encode()
+            country = data['Response'][0]['GeoLoc']['Country']
+            region = data['Response'][0]['GeoLoc']['Region']
+            city = data['Response'][0]['GeoLoc']['City']
         except:
             pass
 
@@ -132,7 +135,7 @@ class Mapper:
 
         with open(os.devnull, 'w') as dev_null:
             pattern = re.compile('\S+[ ]+\S+[ ]+\S+[ ]+\S+[ ]+([0-9a-f.:]+)\.[0-9]+')
-            lines = subprocess.check_output(["netstat", "-f", "inet", "-n"]).split('\n')
+            lines = subprocess.check_output(["netstat", "-f", "inet", "-n"]).decode(encoding).split('\n')
 
             for line in lines:
                 match = pattern.match(line)
@@ -146,7 +149,7 @@ class Mapper:
 
         try:
             with open(os.devnull, 'w') as dev_null:
-                data = json.loads(subprocess.check_output(["curl", "-s", "http://api.0x666.tk/ip?a=" + ','.join(ips)], stderr=dev_null))
+                data = json.loads(subprocess.check_output(["curl", "-s", "http://api.0x666.tk/ip?a=" + ','.join(ips)], stderr=dev_null).decode(encoding))
 
             for loc in data['Response']:
                 lat = loc['GeoLoc']['Latitude']
@@ -271,7 +274,19 @@ class Mapper:
                 cpl_pad.addch(y, route_ip_x + i, route_ip[i], route_ip_color)
 
             if (route[1]):
-                locale = "%s %s, %s" % (route[4], route[3], route[2])
+                locale = ""
+
+                if (route[4] and route[3] and route[2]):
+                    locale = "%s %s, %s" % (route[4], route[3], route[2])
+                elif (route[4] and route[2]):
+                    locale = "%s, %s" % (route[4], route[2])
+                elif (route[3] and route[2]):
+                    locale = "%s, %s" % (route[3], route[2])
+                elif (route[2]):
+                    locale = "%s" % route[2]
+                else:
+                    locale = "UNKNOWN"
+
                 locale_x = max(route_ip_x + len(route_ip) + 1, max_x - len(locale) - 1)
 
                 for i in range(0, min(len(locale), max_x - locale_x - 1)):

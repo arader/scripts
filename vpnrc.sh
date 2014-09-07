@@ -39,7 +39,7 @@ forward_transmission_port()
 
     while [ -z "$port" ] && [ $attempt -lt 7 ]
     do
-        response=`/usr/sbin/setfib $fib /usr/local/bin/curl -s -S --stderr - -d "user=$USER&pass=$PASS&client_id=$CLIENTID&local_ip=$ip" https://www.privateinternetaccess.com/vpninfo/port_forward_assignment`
+        response=`/usr/sbin/setfib $fib /usr/local/bin/curl --insecure -s -S --stderr - -d "user=$USER&pass=$PASS&client_id=$CLIENTID&local_ip=$ip" https://www.privateinternetaccess.com/vpninfo/port_forward_assignment`
 
         if [ "$?" -eq 0 ]
         then

@@ -7,7 +7,7 @@
 PATH=/bin:/usr/bin:/sbin
 
 host=""
-port=""
+port="22"
 self="`basename $0`"
 dotpid="/var/run/$self.pid"
 base_snap="shadow.base"

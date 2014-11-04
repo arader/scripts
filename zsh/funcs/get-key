@@ -1,0 +1,8 @@
+if [[ -z "$1" ]]
+then
+    echo "ERROR: missing arguments, usage:"
+    echo "$0 <user>"
+    return 1
+fi
+
+gpg -a  --export "$1"

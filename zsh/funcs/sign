@@ -1,0 +1,20 @@
+if [[ -z "$1" ]]
+then
+    echo "ERROR: missing arguments, usage:"
+    echo "$0 <file>
+    return 1
+fi
+
+if [[ ! -f "$1" ]]
+then
+    echo "ERROR: $1 does not exist"
+    return 2
+fi
+
+if [[ -f "$1.sig" ]]
+then
+    echo "ERROR: $1.sig exists"
+    return 3
+fi
+
+gpg -a --output "$1.sig" --detach-sig "$1"

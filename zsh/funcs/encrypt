@@ -1,0 +1,20 @@
+if [[ -z "$1" || -z "$2" ]]
+then
+    echo "ERROR: missing arguments, usage:"
+    echo "$0 <file> <recipient>"
+    return 1
+fi
+
+if [[ ! -f "$1" ]]
+then
+    echo "ERROR: $1 does not exist"
+    return 2
+fi
+
+if [[ -f "$1.gpg" ]]
+then
+    echo "ERROR: $1.gpg exists"
+    return 3
+fi
+
+gpg -a --output "$1.gpg" --encrypt --recipient $2 $1

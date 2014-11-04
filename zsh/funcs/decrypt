@@ -1,0 +1,30 @@
+if [[ -z "$1" ]]
+then
+    echo "ERROR: missing arguments, usage:"
+    echo "$0 <file>"
+    return 1
+fi
+
+if [[ ! -f "$1" ]]
+then
+    echo "ERROR: $1 does not exist"
+    return 2
+fi
+
+echo "$1" | grep .gpg$
+
+if [[ $? != 0 ]]
+then
+    echo "ERROR: $1 does not end in .gpg, are you sure it's encrypted?"
+    return 3
+fi
+
+output=$(echo "$1" | sed 's/.gpg$//')
+
+if [[ -f "$output" ]]
+then
+    echo "ERROR: $output exists"
+    return 4
+fi
+
+gpg --output $output --decrypt "$1"

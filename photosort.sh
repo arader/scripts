@@ -25,9 +25,9 @@ scan()
         if [ "$?" != 0 ] || [ -z "$dt" ]
         then
             log "failed to read date from $file, defaulting to 'today'"
-            parent=`date -j +%Y/%B`
+            parent=`date -j +%Y/%m.%B`
         else
-            parent=`date -j -f "%Y:%m:%d %H:%M:%S" "$dt" +%Y/%B`
+            parent=`date -j -f "%Y:%m:%d %H:%M:%S" "$dt" +%Y/%m.%B`
         fi
 
         dest="$root/$parent"

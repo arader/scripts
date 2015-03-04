@@ -7,6 +7,9 @@
 # or as a cron job
 #
 
+# Make sure PATH includes the path to 'mediainfo'
+PATH=/bin:/usr/bin:/usr/local/bin
+
 self="$(basename $0)"
 dotpid="/var/run/$self.pid"
 

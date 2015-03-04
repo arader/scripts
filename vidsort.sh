@@ -139,7 +139,5 @@ echo $$ > $dotpid
 
 scan $1 $2
 
-sleep 20
-
 rm $dotpid
 exit 0

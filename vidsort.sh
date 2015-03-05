@@ -8,7 +8,9 @@
 #
 
 # Make sure PATH includes the path to 'mediainfo'
-PATH=/bin:/usr/bin:/usr/local/bin
+PATH=/bin:/usr/bin:/sbin:/usr/local/bin
+
+depends="find mkdir mv rm date sha1 mediainfo"
 
 self="$(basename $0)"
 dotpid="/var/run/$self.pid"
@@ -60,7 +62,8 @@ move()
     fi
 
     counter=0
-    while [ -e "$file" ] && [ $counter -lt 5 ]
+    skip=0
+    while [ -e "$file" ] && [ $counter -lt 5 ] && [ $skip == 0 ]
     do
         if [ "$counter" == 0 ]
         then
@@ -76,7 +79,20 @@ move()
         if [ -e "$dest/$destfilename" ]
         then
             orighash=`sha1 -q "$file"`
+
+            if [ "$?" != 0 ]
+            then
+                skip=1
+                continue
+            fi
+
             desthash=`sha1 -q "$dest/$destfilename"`
+
+            if [ "$?" != 0 ]
+            then
+                skip=1
+                continue
+            fi
 
             if [ "$orighash" == "$desthash" ]
             then
@@ -90,11 +106,35 @@ move()
         counter=`expr $counter + 1`
     done
 
+
     if [ -e "$file" ]
     then
-        log "failed to move the file '$file' after $counter attempts, skipping"
-        return
+        if [ $skip == 1 ]
+        then
+            log "file '$file' exists at '$dest/$destfilename', but could not calculate hash, skipping"
+        else
+            log "failed to move the file '$file' after $counter attempts, skipping"
+        fi
     fi
+}
+
+verify_env()
+{
+    # this function will verify that we have the necessary
+    # utilities to run correctly
+
+    for dep in $depends
+    do
+        $(which $dep > /dev/null 2>&1)
+
+        if [ $? != 0 ]
+        then
+            log "missing required dependency '$dep'"
+            return 2
+        fi
+    done
+
+    return 0
 }
 
 log()
@@ -140,7 +180,15 @@ fi
 
 echo $$ > $dotpid
 
-scan $1 $2
+verify_env
 
-rm $dotpid
-exit 0
+if [ "$?" == 0 ]
+then
+    scan $1 $2
+    ec=0
+else
+    ec=1
+fi
+
+rm $dotpid > /dev/null 2>&1
+exit $ec

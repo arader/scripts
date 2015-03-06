@@ -22,15 +22,14 @@ scan()
 
     find $1 -iname "*.mov" -or -iname "*.avi" -or -iname "*.mp4" | while read file
     do
-        #dt=`$EXIF --tag 0x132 -m "$file"`
         dt=$(mediainfo --inform="General;%Recorded_Date%" $file)
 
         if [ "$?" != 0 ] || [ -z "$dt" ]
         then
             log "failed to read date from $file, defaulting to 'today'"
-            parent=`date -j +%Y/%m.%B`
+            parent=$(date -j +%Y/%m.%B)
         else
-            parent=`date -j -f "%Y-%m-%dT%H:%M:%S%z" "$dt" +%Y/%m.%B`
+            parent=$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "$dt" +%Y/%m.%B)
         fi
 
         dest="$root/$parent"
@@ -53,7 +52,7 @@ move()
     fi
 
     # strip the leading path off the file
-    filename=`echo $file | sed 's|.*/||'`
+    filename=$(echo $file | sed 's|.*/||')
 
     if [ -z "$filename" ]
     then
@@ -69,8 +68,8 @@ move()
         then
             destfilename="$filename"
         else
-            basefilename=`echo $filename | sed 's|\(.*\)\..*|\1|'`
-            fileext=`echo $filename | sed 's|.*\.\(.*\)|\1|'`
+            basefilename=$(echo $filename | sed 's|\(.*\)\..*|\1|')
+            fileext=$(echo $filename | sed 's|.*\.\(.*\)|\1|')
             destfilename="${basefilename}_${counter}.${fileext}"
 
             log "failed to move the file '$file', trying again (new filename: '$destfilename')"
@@ -78,7 +77,7 @@ move()
 
         if [ -e "$dest/$destfilename" ]
         then
-            orighash=`sha1 -q "$file"`
+            orighash=$(sha1 -q "$file")
 
             if [ "$?" != 0 ]
             then
@@ -86,7 +85,7 @@ move()
                 continue
             fi
 
-            desthash=`sha1 -q "$dest/$destfilename"`
+            desthash=$(sha1 -q "$dest/$destfilename")
 
             if [ "$?" != 0 ]
             then
@@ -103,9 +102,8 @@ move()
         else
             mv -n "$file" "$dest/$destfilename"
         fi
-        counter=`expr $counter + 1`
+        counter=$(expr $counter + 1)
     done
-
 
     if [ -e "$file" ]
     then

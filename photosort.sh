@@ -7,27 +7,29 @@
 # manually or as part of cron
 #
 
-EXIF=/usr/local/bin/exif
-FIND=/usr/bin/find
-MKDIR=/bin/mkdir
+# Make sure PATH includes the path to 'exif'
+PATH=/bin:/usr/bin:/sbin:/usr/local/bin
+
+depends="find mkdir mv rm date sha1 exif"
+
+self="$(basename $0)"
+dotpid="/var/run/$self.pid"
 
 scan()
 {
     src=$1
     root=$2
 
-    files=`$FIND $src -iname "*.jpg" -or -iname "*.png"`
-
-    $FIND $src -iname "*.jpg" -or -iname "*.png" | while read file
+    find $src -iname "*.jpg" -or -iname "*.png" | while read file
     do
-        dt=`$EXIF --tag 0x132 -m "$file"`
+        dt=$(exif --tag 0x132 -m "$file")
 
         if [ "$?" != 0 ] || [ -z "$dt" ]
         then
             log "failed to read date from $file, defaulting to 'today'"
-            parent=`date -j +%Y/%m.%B`
+            parent=$(date -j +%Y/%m.%B)
         else
-            parent=`date -j -f "%Y:%m:%d %H:%M:%S" "$dt" +%Y/%m.%B`
+            parent=$(date -j -f "%Y:%m:%d %H:%M:%S" "$dt" +%Y/%m.%B)
         fi
 
         dest="$root/$parent"
@@ -50,7 +52,7 @@ move()
     fi
 
     # strip the leading path off the file
-    filename=`echo $file | sed 's|.*/||'`
+    filename=$(echo $file | sed 's|.*/||')
 
     if [ -z "$filename" ]
     then
@@ -59,14 +61,15 @@ move()
     fi
 
     counter=0
-    while [ -e "$file" ] && [ $counter -lt 5 ]
+    skip=0
+    while [ -e "$file" ] && [ $counter -lt 5 ] && [ $skip == 0 ]
     do
         if [ "$counter" == 0 ]
         then
             destfilename="$filename"
         else
-            basefilename=`echo $filename | sed 's|\(.*\)\..*|\1|'`
-            fileext=`echo $filename | sed 's|.*\.\(.*\)|\1|'`
+            basefilename=$(echo $filename | sed 's|\(.*\)\..*|\1|')
+            fileext=$(echo $filename | sed 's|.*\.\(.*\)|\1|')
             destfilename="${basefilename}_${counter}.${fileext}"
 
             log "failed to move the file '$file', trying again (new filename: '$destfilename')"
@@ -74,8 +77,21 @@ move()
 
         if [ -e "$dest/$destfilename" ]
         then
-            orighash=`sha1 -q "$file"`
-            desthash=`sha1 -q "$dest/$destfilename"`
+            orighash=$(sha1 -q "$file")
+
+            if [ "$?" != 0 ]
+            then
+                skip=1
+                continue
+            fi
+
+            desthash=$(sha1 -q "$dest/$destfilename")
+
+            if [ "$?" != 0 ]
+            then
+                skip=1
+                continue
+            fi
 
             if [ "$orighash" == "$desthash" ]
             then
@@ -86,14 +102,37 @@ move()
         else
             mv -n "$file" "$dest/$destfilename"
         fi
-        counter=`expr $counter + 1`
+        counter=$(expr $counter + 1)
     done
 
     if [ -e "$file" ]
     then
-        log "failed to move the file '$file' after $counter attempts, skipping"
-        return
+        if [ $skip == 1 ]
+        then
+            log "file '$file' exists at '$dest/$destfilename', but could not calculate hash, skipping"
+        else
+            log "failed to move the file '$file' after $counter attempts, skipping"
+        fi
     fi
+}
+
+verify_env()
+{
+    # this function will verify that we have the necessary
+    # utilities to run correctly
+
+    for dep in $depends
+    do
+        $(which $dep > /dev/null 2>&1)
+
+        if [ $? != 0 ]
+        then
+            log "missing required dependency '$dep'"
+            return 2
+        fi
+    done
+
+    return 0
 }
 
 log()
@@ -129,6 +168,25 @@ then
     exit 1
 fi
 
-scan $1 $2
+pid=$(pgrep -F $dotpid 2>/dev/null)
 
-exit 0
+if [ ! -z $pid ]
+then
+    log "$self is already running as pid $pid, exiting"
+    exit 0
+fi
+
+echo $$ > $dotpid
+
+verify_env
+
+if [ "$?" == 0 ]
+then
+    scan $1 $2
+    ec=0
+else
+    ec=1
+fi
+
+rm $dotpid > /dev/null 2>&1
+exit $ec

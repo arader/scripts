@@ -1,0 +1,173 @@
+#!/bin/sh
+
+#
+# safemv takes the place of the 'mv' command, making it
+# safe to move a file to a destination without the risk
+# of overwritting an existing file. if safemv encounters
+# a file in the destination with the same name, it will
+# compare the two file's hashes. If they are the same,
+# the src file will be removed. If they are different,
+# the src file will be moved to a differently named file.
+#
+
+self="$(basename $0)"
+depends="mkdir mv rm sha1"
+
+move_file()
+{
+    if [ $3 == 1 ]
+    then
+        mkdir -p "$2"
+
+        if [ "$?" != 0 ]
+        then
+            log "failed to make the destination directory '$2'"
+            return;
+        fi
+    fi
+
+    srcfilename=$(basename "$1")
+
+    counter=0
+    while [ -e "$1" ] && [ $counter -lt 5 ]
+    do
+        if [ "$counter" == 0 ]
+        then
+            destfilename="$srcfilename"
+        else
+            filenoext=$(echo $srcfilename | sed 's|\(.*\)\..*|\1|')
+            extension=$(echo $srcfilename | sed 's|.*\.\(.*\)|\1|')
+
+            if [ ! -z "$extension" ]
+            then
+                destfilename="${filenoext}_${counter}.${extension}"
+            else
+                destfilename="${srcfilename}_${counter}"
+            fi
+        fi
+
+        if [ -e "$2/$destfilename" ]
+        then
+            orighash=$(sha1 -q "$1")
+            desthash=$(sha1 -q "$2/$destfilename")
+
+            if [ -z "$orighash" ] || [ -z "$desthash" ]
+            then
+                echo "filename collection detected, but could not calculate file hashes"
+                exit 4
+            fi
+
+            if [ "$orighash" == "$desthash" ]
+            then
+                if [ $3 == 0 ] || [ $4 == 1 ]
+                then
+                    echo "$1: duplicate, deleting"
+                fi
+
+                if [ $3 == 1 ]
+                then
+                    rm "$1"
+                else
+                    break
+                fi
+            fi
+
+        else
+            if [ $3 == 1 ]
+            then
+                mv -n "$1" "$2/$destfilename"
+            fi
+
+            if [ $3 == 0 ] || [ $4 == 1 ]
+            then
+                echo "$1 -> $2/$destfilename"
+            fi
+
+            if [ $3 == 0 ]
+            then
+                break
+            fi
+        fi
+        counter=$(expr $counter + 1)
+    done
+
+    if [ $3 == 1 ] && [ -e "$1" ]
+    then
+        echo "failed to move the file '$1' after $counter attempts" 1>&2
+        exit 2
+    fi
+}
+
+deps_check()
+{
+    for dep in $@
+    do
+        $(which $dep > /dev/null 2>&1)
+
+        if [ $? != 0 ]
+        then
+            echo "missing dependency: '$dep'" 1>&2
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+usage()
+{
+    echo "usage: $self [-v] [-n] source_file dest_dir"
+    echo " -v: print each moved file after moving"
+    echo " -n: don't actually move the file, instead print what would have happened"
+}
+
+do_print=0
+do_move=1
+
+while getopts ":vn" opt
+do
+    case $opt in
+        v)
+            do_print=1
+            ;;
+        n)
+            do_move=0
+            ;;
+    esac
+
+    shift $(($OPTIND-1))
+done
+
+if [ $# != 2 ]
+then
+    usage
+    exit 1
+fi
+
+if [ ! -f "$1" ]
+then
+    echo "error: $1 does not appear to be a file" 1>&2
+    exit 2
+fi
+
+if [ -h "$1" ]
+then
+    echo "error: $1 is a symbolic link" 1>&2
+    exit 3
+fi
+
+if [ ! -d "$2" ]
+then
+    echo "error: $2 does not appear to be a directory" 1>&2
+    exit 4
+fi
+
+deps_check $depends
+
+if [ $? != 0 ]
+then
+    exit 5
+fi
+
+move_file "$1" "$2" $do_move $do_print
+exit 0

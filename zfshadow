@@ -35,6 +35,14 @@ process_dataset()
     do
         log "  started processing $dataset at `date`"
 
+        ignore=`zfs get -H -o value zfshadow:ignore $dataset`
+
+        if [ "$ignore" == "yes" ]
+        then
+            log "  skipping $dataset (zfshadow:ignore property set)"
+            continue
+        fi
+
         # calculate what the remote dataset's name is
         remote_dataset="$remote`echo $dataset | sed 's|^[^/]*||'`"
 

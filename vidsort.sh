@@ -95,7 +95,7 @@ move()
 
             if [ "$orighash" == "$desthash" ]
             then
-                log "duplicate file '$file' detected at '$dest/$destfilename', deleting '$file'"
+                log "duplicate file '$file' detected at '$dest/$destfilename', deleting '$file' ('$orighash' == '$desthash')"
                 rm "$file"
             fi
 

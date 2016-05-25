@@ -5,4 +5,4 @@ then
 fi
 
 (history 1 | grep --color=always "$*" ||
-    grep -h --color=always "$*" $(find ~/.history/ -type f -iname '*.history') | sed 's/^[^;]*;//') | less -rFX
+    grep -h --text --color=always "$*" $(find ~/.history/ -type f -iname '*.history') | sed 's/^[^;]*;//') | less -rFX

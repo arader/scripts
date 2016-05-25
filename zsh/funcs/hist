@@ -1,0 +1,8 @@
+if [[ $# == 0 ]]
+then
+    echo "USAGE: hist <search terms>" 2>&1
+    return 1
+fi
+
+(history 1 | grep --color=always "$*" ||
+    grep -h --color=always "$*" $(find ~/.history/ -type f -iname '*.history') | sed 's/^[^;]*;//') | less -rFX

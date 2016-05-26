@@ -4,5 +4,8 @@ then
     return 1
 fi
 
-(history 1 | grep --color=always "$*" ||
-    grep -h --text --color=always "$*" $(find ~/.history/ -type f -iname '*.history') | sed 's/^[^;]*;//') | less -rFX
+# First use zsh 'history' built in as this provides an easy
+# index to re-run the command with. If that fails to find
+# any matches, search all of time to find the command
+(history 1 | grep --color=always -i "$*" ||
+    grep -h --text --color=always -i "$*" $(find ~/.history/ -type f -iname '*.history') | sed 's/^[^;]*;//') | less -rFX

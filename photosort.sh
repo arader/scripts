@@ -10,7 +10,7 @@
 # Make sure PATH includes the path to 'exif'
 PATH=/bin:/usr/bin:/sbin:/usr/local/bin
 
-depends="find mkdir mv rm date sha1 exif"
+depends="find mkdir mv rm date sha1 exif realpath basename dirname xargs"
 
 self="$(basename $0)"
 dotpid="/var/run/$self.pid"
@@ -22,14 +22,18 @@ scan()
 
     find $src -iname "*.jpg" -or -iname "*.png" | while read file
     do
-        dt=$(exif --tag 0x132 -m "$file")
+        parent=$(exif --no-fixup --tag 0x132 -m "$file" 2>/dev/null | xargs -I {} date -j -f "%Y:%m:%d %H:%M:%S" "{}" "+%Y/%m.%B")
 
-        if [ "$?" != 0 ] || [ -z "$dt" ]
+        if [ -z "$parent" ]
         then
-            log "failed to read date from $file, defaulting to 'today'"
+            log "failed to read EXIF date from $file, falling back to modified time"
+            parent=$(stat -f %m "$file" 2>/dev/null | xargs -I {} date -j -f "%s" "{}" "+%Y/%m.%B")
+        fi
+
+        if [ -z "$parent" ]
+        then
+            log "failed to read modified time of $file, defaulting to 'today'"
             parent=$(date -j +%Y/%m.%B)
-        else
-            parent=$(date -j -f "%Y:%m:%d %H:%M:%S" "$dt" +%Y/%m.%B)
         fi
 
         dest="$root/$parent"
@@ -43,6 +47,15 @@ move()
     file=$1
     dest=$2
 
+    realfile=$(realpath "$file" | xargs -I {} dirname "{}")
+    realdest=$(realpath "$dest" 2>/dev/null)
+
+    if [ "$realfile" == "$realdest" ]
+    then
+        log "file source '$file' is same as destination, skipping"
+        return;
+    fi
+
     mkdir -p "$dest"
 
     if [ "$?" != 0 ]
@@ -52,7 +65,7 @@ move()
     fi
 
     # strip the leading path off the file
-    filename=$(echo $file | sed 's|.*/||')
+    filename=$(basename "$file")
 
     if [ -z "$filename" ]
     then

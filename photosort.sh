@@ -20,7 +20,7 @@ scan()
     src=$1
     root=$2
 
-    find $src -iname "*.jpg" -or -iname "*.png" | while read file
+    find "$src" -iname "*.jpg" -or -iname "*.png" | while read file
     do
         parent=$(exif --no-fixup --tag 0x132 -m "$file" 2>/dev/null | head -n 1 | xargs -I {} date -j -f "%Y:%m:%d %H:%M:%S" "{}" "+%Y/%m.%B")
 
@@ -233,7 +233,7 @@ verify_env
 
 if [ "$?" == 0 ]
 then
-    scan $1 $2
+    scan "$1" "$2"
     ec=0
 else
     ec=1

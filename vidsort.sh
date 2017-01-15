@@ -20,7 +20,7 @@ scan()
     src=$1
     root=$2
 
-    find $1 -iname "*.mov" -or -iname "*.avi" -or -iname "*.mp4" | while read file
+    find "$src" -iname "*.mov" -or -iname "*.avi" -or -iname "*.mp4" | while read file
     do
         parent=$(mediainfo --inform="General;%Recorded_Date%" "$file" 2>/dev/null | xargs -I {} date -j -f "%Y-%m-%dT%H:%M:%S%z" "{}" "+%Y/%m.%B" 2>/dev/null)
 
@@ -233,7 +233,7 @@ verify_env
 
 if [ "$?" == 0 ]
 then
-    scan $1 $2
+    scan "$1" "$2"
     ec=0
 else
     ec=1

@@ -47,20 +47,53 @@ move()
     file=$1
     dest=$2
 
-    realfile=$(realpath "$file" | xargs -I {} dirname "{}")
-    realdest=$(realpath "$dest" 2>/dev/null)
-
-    if [ "$realfile" == "$realdest" ]
-    then
-        log "file source '$file' is same as destination, skipping"
-        return;
-    fi
-
     mkdir -p "$dest"
 
     if [ "$?" != 0 ]
     then
         log "failed to make the destination directory '$dest'"
+        return;
+    fi
+
+    realfile=$(realpath "$file")
+
+    if [ "$?" != 0 ]
+    then
+        log "failed to find realpath for '$file', skipping"
+        return;
+    fi
+
+    realfiledir=$(dirname "$realfile")
+
+    if [ "$?" != 0 ]
+    then
+        log "failed to find dirname for '$realfile', skipping"
+        return;
+    fi
+
+    realdest=$(realpath "$dest" 2>/dev/null)
+
+    if [ "$?" != 0 ]
+    then
+        log "failed to find realpath for '$dest', skipping"
+        return;
+    fi
+
+    if [ -z "$realfiledir" ]
+    then
+        log "failed to find real directory for '$file', skipping"
+        return;
+    fi
+
+    if [ -z "$realdest" ]
+    then
+        log "failed to find real directory for '$dest', skipping"
+        return;
+    fi
+
+    if [ "$realfiledir" == "$realdest" ]
+    then
+        log "file source '$file' is same as destination, skipping"
         return;
     fi
 
